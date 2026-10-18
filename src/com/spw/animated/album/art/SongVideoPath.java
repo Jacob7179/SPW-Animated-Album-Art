@@ -31,11 +31,27 @@ public final class SongVideoPath {
         return Paths.get(uri);
     }
     public static Path find(String value) {
+        return find(value, java.util.List.of("square_animated_artwork.mp4"));
+    }
+    /** Try up to five filenames, in priority order, beside the current song. */
+    public static Path find(String value, java.util.List<String> names) {
         Path song = songPath(value);
-        if (song == null) return null;
+        if (song == null || names == null) return null;
         Path folder = song.toAbsolutePath().getParent();
         if (folder == null) return null;
-        Path video = folder.resolve("square_animated_artwork.mp4");
-        return Files.isRegularFile(video) ? video : null;
+        for (int index=0; index<Math.min(5,names.size()); index++) {
+            String name=names.get(index);
+            if(name==null || name.isBlank()) continue;
+            name=name.trim();
+            // A filename setting stays local to the song's folder.
+            if(name.contains("/") || name.contains("\\")) continue;
+            try {
+                Path relative=Paths.get(name);
+                if(relative.isAbsolute() || relative.getNameCount()!=1) continue;
+                Path candidate=folder.resolve(relative);
+                if(Files.isRegularFile(candidate)) return candidate;
+            } catch(InvalidPathException invalid) { /* Try the next configured name. */ }
+        }
+        return null;
     }
 }

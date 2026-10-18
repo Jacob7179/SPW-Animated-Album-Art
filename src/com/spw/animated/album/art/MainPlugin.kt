@@ -20,6 +20,7 @@ import kotlin.math.roundToInt
 class MainPlugin(context:PluginContext):SpwPlugin(context){
     private var handle:HookHandle?=null
     @Volatile private var enabled=false
+    private var settings:com.xuncorp.spw.workshop.api.config.ConfigHelper?=null
     private lateinit var ffmpeg:Path
     private data class Source(val path:Path?)
     private class Stream(val decoder:NativeVideo,val frame:MutableState<NativeVideo.Frame?>,var users:Int)
@@ -46,7 +47,8 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         check(WorkshopApi.manager.isPermissionGranted(PluginPermission.CLASS_TRANSFORM)&&WorkshopApi.manager.isPermissionGranted(PluginPermission.LIBRARY_READ)){"Grant Class transform and Library read"}
         var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
         ffmpeg=root.resolve("bin/ffmpeg.exe");check(Files.isRegularFile(ffmpeg)){"Missing bundled MP4 decoder"}
-        enabled=true;diagnostic("Starting 2.0.3: native cover-canvas replacement; no Swing/JavaFX surface")
+        settings=WorkshopApi.manager.createConfigManager().getConfig()
+        enabled=true;diagnostic("Starting 0.2.0: native cover-canvas replacement; no Swing/JavaFX surface")
         try{
             handle=WorkshopApi.hookRegistrar.replaceComposable(
                 className="androidx.compose.ui.\u05d0",methodName="\u037f",inClass="androidx.compose.ui.\u05d7",
@@ -64,7 +66,13 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             while(isActive&&enabled){
                 value=withContext(Dispatchers.IO){runCatching{
                     val song=WorkshopApi.playback.getCurrentMediaItem()?.path
-                    val path=song?.let(SongVideoPath::find)
+                    val config=settings
+                    config?.reload()
+                    val names=(1..5).map { index ->
+                        config?.get("video_filename_$index",if(index==1)"square_animated_artwork.mp4" else "")
+                            ?: if(index==1)"square_animated_artwork.mp4" else ""
+                    }
+                    val path=song?.let { SongVideoPath.find(it,names) }
                     val status="song=$song; video=$path"
                     if(last!=status){last=status;diagnostic(status)}
                     Source(path)
@@ -107,6 +115,6 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     }
     @Synchronized override fun stop(){
         enabled=false;handle?.unhook();handle=null
-        streams.values.forEach{it.decoder.close()};streams.clear()
+        streams.values.forEach{it.decoder.close()};streams.clear();settings=null
     }
 }

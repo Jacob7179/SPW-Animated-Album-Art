@@ -15,7 +15,7 @@ plugins {
 }
 
 group = "com.spw.animated.album.art"
-version = "2.0.3"
+version = "0.2.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -64,9 +64,9 @@ spmod {
     PluginId = "com.spw.animated.album.art"
     PluginName = "SPW-Animated-Album-Art"
     PluginDescription = "Native cover-canvas MP4 replacement"
-    PluginVersion = "0.1.0"
+    PluginVersion = "0.2.0"
     PluginProvider = "Jacob7179"
-    PluginHasConfig = false
+    PluginHasConfig = true
     PluginPermissions = listOf(PluginPermission.CLASS_TRANSFORM, PluginPermission.LIBRARY_READ)
     PluginOpenSourceUrl = "https://github.com/Jacob7179/SPW-Animated-Album-Art"
 }

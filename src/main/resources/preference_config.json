@@ -1,0 +1,45 @@
+{
+  "configs": [
+    {
+      "title": "Animated album art filenames",
+      "config": "config.json",
+      "preferences": [
+        {
+          "key": "video_filename_1",
+          "type": "edittext",
+          "title": "Video filename 1",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": "square_animated_artwork.mp4"
+        },
+        {
+          "key": "video_filename_2",
+          "type": "edittext",
+          "title": "Video filename 2",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_3",
+          "type": "edittext",
+          "title": "Video filename 3",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_4",
+          "type": "edittext",
+          "title": "Video filename 4",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_5",
+          "type": "edittext",
+          "title": "Video filename 5",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        }
+      ]
+    }
+  ]
+}
