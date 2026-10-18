@@ -44,6 +44,9 @@ bin/
 ### Mac OS ###
 .DS_Store
 
+### Tests ###
+tests/
+
 ### Build Output ###
 .jdk/
 .zip
