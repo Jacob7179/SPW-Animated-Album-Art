@@ -8,7 +8,7 @@ echo.
 echo ===== SPW Animated Album Art Workshop Build =====
 echo Project: "%CD%"
 echo.
-echo Checking FFmpeg; downloading it automatically if needed...
+echo Checking project, PATH and installed FFmpeg; downloading only if needed...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-ffmpeg.ps1" -ProjectRoot "%CD%"
 if errorlevel 1 goto ffmpegfail
 set "PATH=%CD%\bin;%PATH%"
@@ -47,7 +47,7 @@ exit /b 0
 echo [ERROR] Missing gradlew.bat or build.gradle.kts.
 goto fail
 :ffmpegfail
-echo [ERROR] Could not prepare FFmpeg. Check the download error above.
+echo [ERROR] Could not find or prepare FFmpeg. Check the error above.
 goto fail
 :javafail
 echo [ERROR] Could not prepare Java 25. Check the download error above.
