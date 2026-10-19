@@ -27,6 +27,12 @@ echo Using Java from "%JAVA_HOME%"
 if errorlevel 1 goto javafail
 
 echo.
+echo Removing previous build folder...
+set "SPW_BUILD_PROJECT=%~dp0"
+powershell.exe -NoProfile -Command "$ErrorActionPreference = 'Stop'; $root = (Resolve-Path -LiteralPath $env:SPW_BUILD_PROJECT).Path.TrimEnd('\'); $target = [IO.Path]::GetFullPath((Join-Path $root 'build')); if ([IO.Path]::GetDirectoryName($target) -ne $root) { throw 'Build folder is outside the project' }; if (Test-Path -LiteralPath $target) { $item = Get-Item -LiteralPath $target -Force; if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing to recursively remove a linked build folder' }; Remove-Item -LiteralPath $target -Recurse -Force }; if (Test-Path -LiteralPath $target) { throw 'Build folder could not be removed' }"
+if errorlevel 1 goto cleanfail
+
+echo.
 echo Building .spmod...
 call "%~dp0gradlew.bat" plugin --no-daemon
 if errorlevel 1 goto gradlefail
@@ -51,6 +57,9 @@ echo [ERROR] Could not find or prepare FFmpeg. Check the error above.
 goto fail
 :javafail
 echo [ERROR] Could not prepare Java 25. Check the download error above.
+goto fail
+:cleanfail
+echo [ERROR] Could not remove the build folder. Close programs using its files and try again.
 goto fail
 :gradlefail
 echo [ERROR] Gradle build failed. See the error above.

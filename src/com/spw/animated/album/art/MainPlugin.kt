@@ -111,9 +111,10 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 drawContext.canvas.concat(transform)
                 drawContext.canvas.saveLayer(rect,Paint().apply{this.alpha=alpha})
                 try {
-                    // Use dp rather than a percentage: small covers still need
-                    // visibly rounded corners. Clamp for very tiny previews.
-                    val radius=minOf(8.dp.toPx(),minOf(rect.width,rect.height)/2f)
+                    // Small previews use the tighter corners of the native artwork.
+                    val shortSide=minOf(rect.width,rect.height)
+                    val corner=if(shortSide<=96.dp.toPx())2.5.dp else 8.5.dp
+                    val radius=minOf(corner.toPx(),shortSide/2f)
                     val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(rect,androidx.compose.ui.geometry.CornerRadius(radius)))}
                     drawContext.canvas.clipPath(clip,ClipOp.Intersect)
                     drawImage(frame.bitmap,dstSize=IntSize(rect.width.roundToInt(),rect.height.roundToInt()),filterQuality=FilterQuality.High)
