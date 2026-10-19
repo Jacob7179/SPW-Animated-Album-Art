@@ -5,6 +5,13 @@
       "config": "config.json",
       "preferences": [
         {
+          "key": "online_artwork",
+          "type": "switch",
+          "title": "Fetch online animated album art",
+          "summary": "If no local video exists, search artwork.m8tec.top using album artist and album, then cache the square video in plugin data. Off cancels pending downloads and uses local files only.",
+          "default_value": true
+        },
+        {
           "key": "video_reflection",
           "type": "switch",
           "title": "Video reflection",

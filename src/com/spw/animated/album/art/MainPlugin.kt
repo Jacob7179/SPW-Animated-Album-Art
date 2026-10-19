@@ -27,6 +27,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     private var settings:com.xuncorp.spw.workshop.api.config.ConfigHelper?=null
     @Volatile private var pauseLoops=true
     private lateinit var ffmpeg:Path
+    private var online:OnlineArtwork?=null
     private data class Source(val song:String?=null,val path:Path?=null,
         val names:List<String> = listOf("square_animated_artwork.mp4","","","",""),val reflection:Boolean=true)
     private class Stream(val decoder:NativeVideo,val frame:MutableState<NativeVideo.Frame?>,var users:Int)
@@ -88,6 +89,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
         ffmpeg=root.resolve("bin/ffmpeg.exe");check(Files.isRegularFile(ffmpeg)){"Missing bundled MP4 decoder"}
         settings=WorkshopApi.manager.createConfigManager().getConfig()
+        online=OnlineArtwork(OnlineArtwork.cacheDirectory(settings,root),ffmpeg,java.util.function.Consumer<String>{diagnostic(it)})
         enabled=true;diagnostic("Starting native image-painter renderer: host owns small/large cover transitions")
         try{
             handles+=WorkshopApi.hookRegistrar.replaceComposable(
@@ -110,7 +112,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                         val source=context.source
                         if(slot.song==null&&source.song!=null){slot.song=source.song;slot.resolved=false}
                         // Resolve the painter's own song, even if playback already moved on.
-                        val ownPath=if(slot.song==source.song)source.path else slot.song?.let{SongVideoPath.find(it,source.names)}
+                        val ownPath=if(slot.song==source.song)source.path else if(slot.resolved)slot.path else slot.song?.let{SongVideoPath.find(it,source.names)}
                         if(!slot.resolved||slot.path!=ownPath){
                             slot.path?.let{path->slot.stream?.let{release(path,it)}}
                             slot.path=ownPath;slot.stream=ownPath?.let{acquire(it)};slot.resolved=true
@@ -127,18 +129,23 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 }
             }
             diagnostic("Native image painter registered; no video overlay or bounding-box redraw")
-        }catch(error:Throwable){enabled=false;handles.forEach{it.unhook()};handles.clear();throw error}
+        }catch(error:Throwable){enabled=false;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
     }
     @Composable private fun CoverScope(call:UiHookCall){
         val source by produceState(Source()){
             var last:String?=null
             while(isActive&&enabled){
                 value=withContext(Dispatchers.IO){runCatching{
-                    val song=WorkshopApi.playback.getCurrentMediaItem()?.path
+                    val media=WorkshopApi.playback.getCurrentMediaItem()
+                    val song=media?.path
                     val config=settings;config?.reload()
                     updateLoopPause(config?.get("loop_pause",true)?:true)
                     val names=(1..5).map{index->config?.get("video_filename_$index",if(index==1)"square_animated_artwork.mp4" else "") ?: if(index==1)"square_animated_artwork.mp4" else ""}
-                    val path=song?.let{SongVideoPath.find(it,names)}
+                    val allowOnline=config?.get("online_artwork",true)?:true
+                    online?.setEnabled(allowOnline)
+                    val local=song?.let{SongVideoPath.find(it,names)}
+                    val artist=if(media?.albumArtist.isNullOrBlank())media?.artist else media?.albumArtist
+                    val path=local ?: if(allowOnline)online?.lookup(artist,media?.album) else null
                     val status="song=$song; video=$path"
                     if(last!=status){last=status;diagnostic(status)}
                     Source(song,path,names,config?.get("video_reflection",true)?:true)
@@ -146,8 +153,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 delay(100)
             }
         }
-        // A shared warm fallback keeps the outgoing movie available while the next
-        // image's decoder starts. Individual native image slots own their streams.
+        // Prewarm the current decoder; painters only render their own streams.
         var displayed by remember{mutableStateOf<Pair<Path,Stream>?>(null)}
         LaunchedEffect(source.path){
             val path=source.path
@@ -213,7 +219,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         }
     }
     @Synchronized override fun stop(){
-        enabled=false;handles.reversed().forEach{it.unhook()};handles.clear()
+        enabled=false;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
         streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();settings=null
     }
 }
@@ -247,5 +253,10 @@ internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height
         } finally {canvas.restore()}
     } finally {canvas.restore()}
 }
+
+
+
+
+
 
 
