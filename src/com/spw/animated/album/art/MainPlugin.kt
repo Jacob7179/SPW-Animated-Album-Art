@@ -34,7 +34,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     private data class Session(val source:Source,val fallback:Stream?,val bindings:Bindings)
     private class Slot(val song:String,var path:Path?=null,var stream:Stream?=null,var resolved:Boolean=false,var seen:Long=0,var videoDrawn:Boolean=false)
     private val origins=CoverOrigins()
-    private val initialCoverRefreshed=java.util.concurrent.atomic.AtomicBoolean(false)
+    private var bootstrap:NativeCoverBootstrap?=null
     private val painterBindings=java.util.Collections.synchronizedMap(java.util.IdentityHashMap<Any,Bindings>())
     private inner class Bindings {
         var session:Session?=null
@@ -92,6 +92,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         ffmpeg=root.resolve("bin/ffmpeg.exe");check(Files.isRegularFile(ffmpeg)){"Missing bundled MP4 decoder"}
         settings=WorkshopApi.manager.createConfigManager().getConfig()
         online=OnlineArtwork(OnlineArtwork.cacheDirectory(settings,root),ffmpeg,java.util.function.Consumer<String>{diagnostic(it)})
+        bootstrap=NativeCoverBootstrap(origins,java.util.function.Supplier<String?>{WorkshopApi.playback.getCurrentMediaItem()?.path},java.util.function.Consumer<String>{diagnostic(it)})
         enabled=true;diagnostic("Starting native image-painter renderer: host owns small/large cover transitions")
         try{
             // Capture the actual decoder request, not a later playback-state snapshot.
@@ -149,7 +150,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 }
             }
             diagnostic("Native image painter registered; no video overlay or bounding-box redraw")
-        }catch(error:Throwable){enabled=false;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
+        }catch(error:Throwable){enabled=false;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
     }
     @Composable private fun CoverScope(call:UiHookCall){
         val source by produceState(Source()){
@@ -171,14 +172,6 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     Source(song,path,names,config?.get("video_reflection",true)?:true)
                 }.onFailure{diagnostic("Lookup failed: $it")}.getOrDefault(Source())}
                 delay(100)
-            }
-        }
-        // A restored image may predate plugin hooks. Re-decode once so its native
-        // bitmap and shader obtain provenance; never infer it from playback state.
-        LaunchedEffect(source.song,source.path){
-            if(source.path!=null&&initialCoverRefreshed.compareAndSet(false,true)){
-                HostCoverBridge.refreshInitialCover()
-                diagnostic("Refreshed initial native cover once to establish image provenance")
             }
         }
         // Prewarm the current decoder; painters only render their own streams.
@@ -242,7 +235,10 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 if(slot==null){
                     val song=origins.song(HostCoverBridge.painterSource(painter))
                     // Unknown/ambiguous provenance stays native; never guess current song.
-                    if(song==null)continue
+                    if(song==null){
+                        if(session.source.path!=null)bootstrap?.offer(painter,session.source.song)
+                        continue
+                    }
                     slot=Slot(song)
                 }
                 session.bindings.slots[painter]=slot
@@ -252,8 +248,8 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         }
     }
     @Synchronized override fun stop(){
-        enabled=false;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
-        streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();origins.clear();initialCoverRefreshed.set(false);settings=null
+        enabled=false;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
+        streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();origins.clear();settings=null
     }
 }
 
@@ -286,6 +282,7 @@ internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height
         } finally {canvas.restore()}
     } finally {canvas.restore()}
 }
+
 
 
 

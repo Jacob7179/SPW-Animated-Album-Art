@@ -15,10 +15,7 @@ public final class HostCoverBridge {
         androidx.compose.ui.א.Ϳ((Function0<Unit>)args.get(0), (Boolean)args.get(1),
             (Boolean)args.get(2), (Boolean)args.get(3), modifier, composer, 0, 0);
     }
-    public static void refreshInitialCover() {
-        com.xuncorp.voxzen.service.PlaybackController.INSTANCE.refreshCurrentCover();
-    }
-    /** The decoder and mipmap painter share these exact native resource identities. */
+/** The decoder and mipmap painter share these exact native resource identities. */
     public static Object imageSource(Object result) {
         if(result instanceof androidx.compose.ui.graphics.ImageBitmap image)
             return androidx.compose.ui.graphics.SkiaImageAsset_skikoKt.asSkiaBitmap(image);
@@ -109,5 +106,6 @@ public final class HostCoverBridge {
         return (long)node.getWidth()*node.getHeight();
     }
 }
+
 
 
