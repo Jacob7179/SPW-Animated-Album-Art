@@ -32,7 +32,9 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         val names:List<String> = listOf("square_animated_artwork.mp4","","","",""),val reflection:Boolean=true)
     private class Stream(val decoder:NativeVideo,val frame:MutableState<NativeVideo.Frame?>,var users:Int)
     private data class Session(val source:Source,val fallback:Stream?,val bindings:Bindings)
-    private class Slot(var song:String?,var path:Path?=null,var stream:Stream?=null,var resolved:Boolean=false,var seen:Long=0,var videoDrawn:Boolean=false)
+    private class Slot(val song:String,var path:Path?=null,var stream:Stream?=null,var resolved:Boolean=false,var seen:Long=0,var videoDrawn:Boolean=false)
+    private val origins=CoverOrigins()
+    private val initialCoverRefreshed=java.util.concurrent.atomic.AtomicBoolean(false)
     private val painterBindings=java.util.Collections.synchronizedMap(java.util.IdentityHashMap<Any,Bindings>())
     private inner class Bindings {
         var session:Session?=null
@@ -92,6 +94,25 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         online=OnlineArtwork(OnlineArtwork.cacheDirectory(settings,root),ffmpeg,java.util.function.Consumer<String>{diagnostic(it)})
         enabled=true;diagnostic("Starting native image-painter renderer: host owns small/large cover transitions")
         try{
+            // Capture the actual decoder request, not a later playback-state snapshot.
+            handles+=WorkshopApi.hookRegistrar.hookMethod(
+                className="com.xuncorp.voxzen.tag.TagParser",methodName="readImage-0E7RQCE",
+                parameterTypes=listOf("java.lang.String","int","int")
+            ){
+                after{call->
+                    if(enabled&&call.throwable==null){
+                        origins.record(HostCoverBridge.imageSource(call.result),call.args[0] as? String)
+                    }
+                }
+            }
+            // The host discards the bitmap after making its mipmap shader. Carry
+            // provenance onto that shader before it is attached to a native painter.
+            handles+=WorkshopApi.hookRegistrar.hookMethod(
+                className="org.jetbrains.skia.Bitmap",methodName="makeShader-lLMeGNU",
+                parameterTypes=listOf("org.jetbrains.skia.FilterTileMode","org.jetbrains.skia.FilterTileMode","org.jetbrains.skia.SamplingMode","[F")
+            ){
+                after{call->if(enabled&&call.throwable==null)origins.propagate(call.thisObject,call.result)}
+            }
             handles+=WorkshopApi.hookRegistrar.replaceComposable(
                 className="androidx.compose.ui.\u05d0",methodName="\u037f",inClass="androidx.compose.ui.\u05d7",
                 parameterTypes=listOf("kotlin.jvm.functions.Function0","boolean","boolean","boolean","androidx.compose.ui.Modifier")
@@ -110,9 +131,8 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                         if(slot==null)return@before
                         slot.seen=System.nanoTime()
                         val source=context.source
-                        if(slot.song==null&&source.song!=null){slot.song=source.song;slot.resolved=false}
                         // Resolve the painter's own song, even if playback already moved on.
-                        val ownPath=if(slot.song==source.song)source.path else if(slot.resolved)slot.path else slot.song?.let{SongVideoPath.find(it,source.names)}
+                        val ownPath=if(CoverOrigins.sameSong(slot.song,source.song))source.path else if(slot.resolved)slot.path else SongVideoPath.find(slot.song,source.names)
                         if(!slot.resolved||slot.path!=ownPath){
                             slot.path?.let{path->slot.stream?.let{release(path,it)}}
                             slot.path=ownPath;slot.stream=ownPath?.let{acquire(it)};slot.resolved=true
@@ -151,6 +171,14 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     Source(song,path,names,config?.get("video_reflection",true)?:true)
                 }.onFailure{diagnostic("Lookup failed: $it")}.getOrDefault(Source())}
                 delay(100)
+            }
+        }
+        // A restored image may predate plugin hooks. Re-decode once so its native
+        // bitmap and shader obtain provenance; never infer it from playback state.
+        LaunchedEffect(source.song,source.path){
+            if(source.path!=null&&initialCoverRefreshed.compareAndSet(false,true)){
+                HostCoverBridge.refreshInitialCover()
+                diagnostic("Refreshed initial native cover once to establish image provenance")
             }
         }
         // Prewarm the current decoder; painters only render their own streams.
@@ -211,7 +239,12 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             var slot=session.bindings.slots[painter]
             if(slot==null){
                 slot=previous?.slots?.remove(painter)
-                if(slot==null)slot=Slot(WorkshopApi.playback.getCurrentMediaItem()?.path)
+                if(slot==null){
+                    val song=origins.song(HostCoverBridge.painterSource(painter))
+                    // Unknown/ambiguous provenance stays native; never guess current song.
+                    if(song==null)continue
+                    slot=Slot(song)
+                }
                 session.bindings.slots[painter]=slot
             }
             painterBindings[painter]=session.bindings
@@ -220,7 +253,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     }
     @Synchronized override fun stop(){
         enabled=false;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
-        streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();settings=null
+        streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();origins.clear();initialCoverRefreshed.set(false);settings=null
     }
 }
 
@@ -253,6 +286,8 @@ internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height
         } finally {canvas.restore()}
     } finally {canvas.restore()}
 }
+
+
 
 
 

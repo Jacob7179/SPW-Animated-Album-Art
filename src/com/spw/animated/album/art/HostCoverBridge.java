@@ -15,6 +15,34 @@ public final class HostCoverBridge {
         androidx.compose.ui.א.Ϳ((Function0<Unit>)args.get(0), (Boolean)args.get(1),
             (Boolean)args.get(2), (Boolean)args.get(3), modifier, composer, 0, 0);
     }
+    public static void refreshInitialCover() {
+        com.xuncorp.voxzen.service.PlaybackController.INSTANCE.refreshCurrentCover();
+    }
+    /** The decoder and mipmap painter share these exact native resource identities. */
+    public static Object imageSource(Object result) {
+        if(result instanceof androidx.compose.ui.graphics.ImageBitmap image)
+            return androidx.compose.ui.graphics.SkiaImageAsset_skikoKt.asSkiaBitmap(image);
+        return null;
+    }
+    public static Object painterSource(Object painter) {
+        if(painter==null)return null;
+        // Salt Player's MipmapCoverPainter holds its immutable Shader, not the Bitmap.
+        // Shader ownership is captured when Bitmap.makeShader returns.
+        for(Class<?> type=painter.getClass();type!=null;type=type.getSuperclass()) {
+            for(java.lang.reflect.Field field:type.getDeclaredFields()) {
+                if(java.lang.reflect.Modifier.isStatic(field.getModifiers()))continue;
+                if(field.getType()==org.jetbrains.skia.Shader.class) {
+                    try {field.setAccessible(true);return field.get(painter);}
+                    catch(IllegalAccessException | RuntimeException ignored){}
+                }
+                if(field.getType()==androidx.compose.ui.graphics.ImageBitmap.class) {
+                    try {field.setAccessible(true);return imageSource(field.get(painter));}
+                    catch(IllegalAccessException | RuntimeException ignored){}
+                }
+            }
+        }
+        return null;
+    }
     public static LayoutCoordinates imageCoordinates(LayoutCoordinates root) {
         if(!(root instanceof NodeCoordinator coordinator)) return null;
         LayoutNode best=find(coordinator.getLayoutNode(), null);
@@ -81,3 +109,5 @@ public final class HostCoverBridge {
         return (long)node.getWidth()*node.getHeight();
     }
 }
+
+
