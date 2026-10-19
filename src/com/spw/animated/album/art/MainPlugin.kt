@@ -82,14 +82,34 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             }
         }
         val path=source.path?:return Modifier
-        val stream=remember(path){acquire(path)}
-        DisposableEffect(stream){onDispose{release(path,stream)}}
+        // Keep the outgoing decoder alive until its replacement has a frame.
+        // Native cover movement/opacity can then animate video instead of a still.
+        var displayed by remember{mutableStateOf<Pair<Path,Stream>?>(null)}
+        LaunchedEffect(path) {
+            val next=acquire(path)
+            var adopted=false
+            try {
+                while(enabled && next.frame.value==null)delay(16)
+                if(enabled){
+                    val previous=displayed
+                    displayed=path to next
+                    adopted=true
+                    previous?.let{release(it.first,it.second)}
+                }
+            } finally {
+                if(!adopted)release(path,next)
+            }
+        }
+        DisposableEffect(Unit){onDispose{
+            displayed?.let{release(it.first,it.second)}
+            displayed=null
+        }}
         var root by remember{mutableStateOf<LayoutCoordinates?>(null)}
         val invisible=remember{Paint().apply{alpha=0f}}
         return Modifier.onGloballyPositioned{position->
             root=position
         }.drawWithContent{
-            val frame=stream.frame.value
+            val frame=displayed?.second?.frame?.value
             val r=root
             if(!enabled||frame==null||r==null||!r.isAttached){drawContent();return@drawWithContent}
             // Run native geometry/transition drawing into a fully transparent buffer.

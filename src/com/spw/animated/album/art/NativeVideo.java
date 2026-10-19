@@ -51,36 +51,48 @@ public final class NativeVideo implements AutoCloseable {
     }
     private void decode(){
         Process decoder=null;
+        long nextFrame=0;
+        final long interval=1_000_000_000L/FPS;
+        boolean first=true;
         try {
-            decoder=new ProcessBuilder(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error",
-                "-stream_loop","-1","-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
-                "-vf","fps="+FPS+",scale="+SIZE+":"+SIZE+":force_original_aspect_ratio=increase:flags=lanczos,crop="+SIZE+":"+SIZE,
-                "-threads","1","-pix_fmt","bgra","-f","rawvideo","pipe:1")
-                .redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            process=decoder;
-            if(!running){decoder.destroyForcibly();return;}
-            try(InputStream input=new BufferedInputStream(decoder.getInputStream())){
-                byte[] pixels=new byte[SIZE*SIZE*4];boolean first=true;
-                long nextFrame=0;
-                final long interval=1_000_000_000L/FPS;
-                while(running){
-                    if(input.readNBytes(pixels,0,pixels.length)!=pixels.length)
-                        throw new EOFException("MP4 decoder stopped");
-                    Frame frame=new Frame(pixels);
-                    // Raw decoder output can arrive in bursts. Pace presentation rather
-                    // than input packets, and never rush frames to catch up after a stall.
-                    long remaining;
-                    while(running && (remaining=nextFrame-System.nanoTime())>0)
-                        java.util.concurrent.locks.LockSupport.parkNanos(remaining);
-                    synchronized(this){
-                        if(!running){frame.close();return;}
-                        retired.addLast(frame);
-                        output.accept(frame);
-                        nextFrame=System.nanoTime()+interval;
-                        while(retired.size()>FPS*2)retired.removeFirst().close();
+            while(running){
+                decoder=new ProcessBuilder(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error",
+                    "-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
+                    "-vf","fps="+FPS+",scale="+SIZE+":"+SIZE+":force_original_aspect_ratio=increase:flags=lanczos,crop="+SIZE+":"+SIZE,
+                    "-threads","1","-pix_fmt","bgra","-f","rawvideo","pipe:1")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+                process=decoder;
+                if(!running){decoder.destroyForcibly();return;}
+                boolean decoded=false;
+                try(InputStream input=new BufferedInputStream(decoder.getInputStream())){
+                    byte[] pixels=new byte[SIZE*SIZE*4];
+                    while(running){
+                        int count=input.readNBytes(pixels,0,pixels.length);
+                        if(count!=pixels.length){
+                            if(count!=0||!decoded)throw new EOFException("MP4 decoder stopped without a complete frame");
+                            break;
+                        }
+                        decoded=true;
+                        Frame frame=new Frame(pixels);
+                        long remaining;
+                        while(running && (remaining=nextFrame-System.nanoTime())>0)
+                            java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining,50_000_000L));
+                        synchronized(this){
+                            if(!running){frame.close();return;}
+                            retired.addLast(frame);
+                            output.accept(frame);
+                            nextFrame=System.nanoTime()+interval;
+                            while(retired.size()>FPS*2)retired.removeFirst().close();
+                        }
+                        if(first){first=false;log.accept("First native video frame ready: "+video);}
                     }
-                    if(first){first=false;log.accept("First native video frame ready: "+video);}
                 }
+                decoder.waitFor();
+                if(running && decoder.exitValue()!=0)throw new IOException("MP4 decoder exit "+decoder.exitValue());
+                decoder=null;
+                // Leave the final frame published. Decode the next opening frame
+                // while it is held; presentation waits one full second after EOF.
+                nextFrame+=1_000_000_000L;
             }
         }catch(Throwable error){
             if(running){log.accept("Native video failed: "+error);output.accept(null);}
