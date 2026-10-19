@@ -44,58 +44,42 @@ public final class NativeVideo implements AutoCloseable {
     }
     private void decode(){
         Process decoder=null;
-        byte[] previousTail=null;
         try {
-          while(running) {
             decoder=new ProcessBuilder(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error",
-                "-re","-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
+                "-stream_loop","-1","-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
                 "-vf","fps="+FPS+",scale="+SIZE+":"+SIZE+":force_original_aspect_ratio=increase:flags=lanczos,crop="+SIZE+":"+SIZE,
                 "-threads","1","-pix_fmt","bgra","-f","rawvideo","pipe:1")
                 .redirectError(ProcessBuilder.Redirect.DISCARD).start();
             process=decoder;
             if(!running){decoder.destroyForcibly();return;}
             try(InputStream input=new BufferedInputStream(decoder.getInputStream())){
-                byte[] pixels=new byte[SIZE*SIZE*4];boolean first=true;int loopFrame=0;boolean decoded=false;
+                byte[] pixels=new byte[SIZE*SIZE*4];boolean first=true;
+                long nextFrame=0;
+                final long interval=1_000_000_000L/FPS;
                 while(running){
-                    int count=input.readNBytes(pixels,0,pixels.length);
-                    if(count!=pixels.length){
-                        if(count!=0||!decoded)throw new EOFException("MP4 decoder stopped without a complete frame");
-                        previousTail=pixels.clone();break;
-                    }
-                    decoded=true;
-                    byte[] displayed=pixels;
-                    if(previousTail!=null && loopFrame<12){
-                        displayed=blendBoundary(previousTail,pixels,loopFrame+1,12);
-                    }
-                    loopFrame++;
-                    Frame frame=new Frame(displayed);
+                    if(input.readNBytes(pixels,0,pixels.length)!=pixels.length)
+                        throw new EOFException("MP4 decoder stopped");
+                    Frame frame=new Frame(pixels);
+                    // Raw decoder output can arrive in bursts. Pace presentation rather
+                    // than input packets, and never rush frames to catch up after a stall.
+                    long remaining;
+                    while(running && (remaining=nextFrame-System.nanoTime())>0)
+                        java.util.concurrent.locks.LockSupport.parkNanos(remaining);
                     synchronized(this){
                         if(!running){frame.close();return;}
                         retired.addLast(frame);
                         output.accept(frame);
+                        nextFrame=System.nanoTime()+interval;
                         while(retired.size()>FPS*2)retired.removeFirst().close();
                     }
                     if(first){first=false;log.accept("First native video frame ready: "+video);}
                 }
             }
-            decoder.waitFor();
-            if(running&&decoder.exitValue()!=0)throw new IOException("MP4 decoder exit "+decoder.exitValue());
-            decoder=null;
-          }
         }catch(Throwable error){
             if(running){log.accept("Native video failed: "+error);output.accept(null);}
         }finally{
             if(decoder!=null)decoder.destroyForcibly();
         }
-    }
-    // Dissolve the held ending frame into the opening 400 ms. This softens
-    // mismatched source endpoints without modifying the user's MP4.
-    static byte[] blendBoundary(byte[] tail,byte[] head,int step,int steps){
-        byte[] result=new byte[head.length];
-        for(int i=0;i<head.length;i++){
-            result[i]=(byte)(((tail[i]&255)*(steps-step)+(head[i]&255)*step+steps/2)/steps);
-        }
-        return result;
     }
     public synchronized void close(){
         running=false;
