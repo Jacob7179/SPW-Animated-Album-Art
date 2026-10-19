@@ -26,6 +26,13 @@ public final class NativeVideo implements AutoCloseable {
             reference=owner.acquire();
         }
         public ImageBitmap getBitmap(){return reference.getBitmap();}
+        public Frame snapshot() throws IOException {
+            int[] colors=new int[SIZE*SIZE];
+            getBitmap().readPixels(colors,0,0,SIZE,SIZE,0,SIZE);
+            byte[] pixels=new byte[SIZE*SIZE*4];
+            java.nio.ByteBuffer.wrap(pixels).order(java.nio.ByteOrder.nativeOrder()).asIntBuffer().put(colors);
+            return new Frame(pixels);
+        }
         public void close(){reference.close();owner.close();}
     }
     private final Path ffmpeg,video;

@@ -20,6 +20,27 @@ public final class HostCoverBridge {
         LayoutNode best=find(coordinator.getLayoutNode(), null);
         return best==null ? null : best.getCoordinates();
     }
+    private static final java.lang.reflect.Field layerAlpha;
+    static {
+        java.lang.reflect.Field field=null;
+        try{field=NodeCoordinator.class.getDeclaredField("lastLayerAlpha");field.setAccessible(true);}
+        catch(ReflectiveOperationException | RuntimeException ignored){}
+        layerAlpha=field;
+    }
+    public static float transitionAlpha(LayoutCoordinates image,LayoutCoordinates root) {
+        float alpha=1f;
+        if(!(image instanceof NodeCoordinator current))return alpha;
+        int guard=0;
+        while(current!=null && current!=root && guard++<100) {
+            if(layerAlpha!=null && current.getLayer()!=null) {
+                try{alpha*=layerAlpha.getFloat(current);}catch(IllegalAccessException ignored){}
+            }
+            NodeCoordinator next=current.getWrappedBy$ui();
+            if(next==null && current.getParentCoordinates() instanceof NodeCoordinator parent)next=parent;
+            current=next;
+        }
+        return Math.max(0f,Math.min(1f,alpha));
+    }
     private static LayoutNode find(LayoutNode node, LayoutNode best) {
         if(!node.isAttached()) return best;
         boolean image=node.getModifier().any(element -> element.getClass().getName().contains("PainterElement"));

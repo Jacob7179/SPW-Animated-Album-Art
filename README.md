@@ -20,3 +20,5 @@ Open the mod settings and enter up to five video filenames, including extensions
 Loop behavior: FFmpeg repeats the original clip directly with -stream_loop -1. There is no dissolve, crossfade, or held-ending-frame blend.
 
 Frame timing: native video frames are presented at most 30 times per second, including loop boundaries. Buffered frames are not rushed to catch up. Direct looping remains enabled with no dissolve.
+
+Cover rendering: draw one primary video image with its native transformation and opacity. Rounded clipping uses 8 dp at every cover size, clamped for tiny previews. Reflection and additional image nodes are not redrawn as duplicate video layers.

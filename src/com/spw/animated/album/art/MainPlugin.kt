@@ -9,6 +9,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.xuncorp.spw.workshop.api.*
 import com.xuncorp.spw.workshop.api.hook.*
 import kotlinx.coroutines.*
@@ -77,7 +78,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     if(last!=status){last=status;diagnostic(status)}
                     Source(path)
                 }.onFailure{diagnostic("Lookup failed: $it")}.getOrDefault(Source(null))}
-                delay(750)
+                delay(100)
             }
         }
         val path=source.path?:return Modifier
@@ -95,24 +96,32 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             // No native cover pixels are retained, and no separate surface is mounted.
             drawContext.canvas.saveLayer(Rect(0f,0f,size.width,size.height),invisible)
             try{drawContent()}finally{drawContext.canvas.restore()}
-            // Cover/lyrics switching replaces descendant nodes without necessarily
-            // repositioning this parent. Resolve the live painter after native drawing
-            // on every frame instead of retaining a detached LayoutCoordinates.
+            // A cover can contain reflection/transition painters as well. Select
+            // one primary image; never draw a second video over the same cover.
             val i=HostCoverBridge.imageCoordinates(r)
             if(i==null||!i.isAttached){drawContent();return@drawWithContent}
-            val rect=r.localBoundingBoxOf(i,false)
-            if(rect.width>1&&rect.height>1){
-                drawContext.canvas.save()
+            val rect=Rect(0f,0f,i.size.width.toFloat(),i.size.height.toFloat())
+            if(rect.width<=1f||rect.height<=1f)return@drawWithContent
+            val alpha=HostCoverBridge.transitionAlpha(i,r)
+            if(alpha<=0f)return@drawWithContent
+            val transform=Matrix()
+            r.transformFrom(i,transform)
+            drawContext.canvas.save()
+            try {
+                drawContext.canvas.concat(transform)
+                drawContext.canvas.saveLayer(rect,Paint().apply{this.alpha=alpha})
                 try {
-                    drawContext.canvas.translate(rect.left,rect.top)
-                    val radius=minOf(rect.width,rect.height)*.025f
-                    val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(Rect(0f,0f,rect.width,rect.height),androidx.compose.ui.geometry.CornerRadius(radius)))}
+                    // Use dp rather than a percentage: small covers still need
+                    // visibly rounded corners. Clamp for very tiny previews.
+                    val radius=minOf(8.dp.toPx(),minOf(rect.width,rect.height)/2f)
+                    val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(rect,androidx.compose.ui.geometry.CornerRadius(radius)))}
                     drawContext.canvas.clipPath(clip,ClipOp.Intersect)
                     drawImage(frame.bitmap,dstSize=IntSize(rect.width.roundToInt(),rect.height.roundToInt()),filterQuality=FilterQuality.High)
                 } finally {drawContext.canvas.restore()}
-            }
+            } finally {drawContext.canvas.restore()}
         }
     }
+
     @Synchronized override fun stop(){
         enabled=false;handle?.unhook();handle=null
         streams.values.forEach{it.decoder.close()};streams.clear();settings=null
