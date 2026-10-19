@@ -20,6 +20,33 @@ public final class HostCoverBridge {
         LayoutNode best=find(coordinator.getLayoutNode(), null);
         return best==null ? null : best.getCoordinates();
     }
+    public static java.util.List<Object> painters(LayoutCoordinates root) {
+        java.util.List<Object> result=new java.util.ArrayList<>();
+        if(root instanceof NodeCoordinator coordinator)collectPainters(coordinator.getLayoutNode(),result);
+        return result;
+    }
+    private static void collectPainters(LayoutNode node,java.util.List<Object> result){
+        if(!node.isAttached())return;
+        node.getModifier().any(element->{
+            if(element.getClass().getName().contains("PainterElement")){
+                try{
+                    java.lang.reflect.Method getter=element.getClass().getDeclaredMethod("getPainter");
+                    getter.setAccessible(true);result.add(getter.invoke(element));
+                }catch(ReflectiveOperationException | RuntimeException ignored){}
+            }
+            return false;
+        });
+        for(LayoutNode child:node.getChildren$ui())collectPainters(child,result);
+    }
+    public static void invalidateImages(LayoutCoordinates root) {
+        if(root instanceof NodeCoordinator coordinator)invalidateImages(coordinator.getLayoutNode());
+    }
+    private static void invalidateImages(LayoutNode node) {
+        if(!node.isAttached())return;
+        if(node.getModifier().any(element->element.getClass().getName().contains("PainterElement")))
+            node.getInnerCoordinator$ui().invalidateLayer();
+        for(LayoutNode child:node.getChildren$ui())invalidateImages(child);
+    }
     private static final java.lang.reflect.Field layerAlpha;
     static {
         java.lang.reflect.Field field=null;

@@ -19,10 +19,11 @@ Open the mod settings and enter up to five video filenames, including extensions
 
 
 
-Cover rendering: draw one primary video image with its native transformation and opacity. Rounded clipping uses 2.5 dp for previews up to 96 dp and 8.5 dp for larger covers, clamped for tiny previews. Reflection and additional image nodes are not redrawn as duplicate video layers.
+Cover rendering: replace pixels inside the native cover painter. Salt Player retains control of the small and large cover transitions, transformations, opacity and reflection. Each outgoing and incoming painter retains its own video stream. Rounded clipping uses 2.5 dp for previews up to 96 dp and 8.5 dp for larger covers, clamped for tiny previews. No separate video overlay is drawn.
 
 Song changes keep the outgoing video playing through the native cover transition until the next video has its first decoded frame. A final-frame hold of one second is inserted between video loops, without blending. Decoder startup may extend the hold on slow systems. Frame presentation remains paced at 30 fps.
 
-Video reflection: an optional live, vertically mirrored reflection below the cover, fading to transparent. Enable Video reflection in mod settings; the default is on. Changes apply without restarting the decoder.
+Video reflection: the native live reflection follows the video and cover transition. Enable Video reflection in mod settings; the default is on. Changes apply without restarting the decoder.
 
 Loop pause setting: Pause 1 second between loops defaults to on. Turn it off to remove the added delay. Changing it updates running decoders and disabling it cancels an active hold.
+
