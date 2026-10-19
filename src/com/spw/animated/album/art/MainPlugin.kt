@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import com.xuncorp.spw.workshop.api.*
 import com.xuncorp.spw.workshop.api.hook.*
 import kotlinx.coroutines.*
@@ -101,21 +100,24 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             ){
                 before{call->
                     val painter=call.thisObject
-                    val context=paintingContext.get() ?: painterBindings[painter]?.session
+                    val context=painterBindings[painter]?.session
                     if(enabled&&context!=null&&painter!=null){
                         val binding=context.bindings
                         if(!binding.logged){binding.logged=true;diagnostic("Native cover painter draw intercepted")}
                         var slot=binding.slots[painter]
-                        if(slot==null){slot=Slot(WorkshopApi.playback.getCurrentMediaItem()?.path);binding.slots[painter]=slot}
+                        if(slot==null)return@before
                         slot.seen=System.nanoTime()
                         val source=context.source
                         if(slot.song==null&&source.song!=null){slot.song=source.song;slot.resolved=false}
-                        if(slot.song==source.song&&(!slot.resolved||slot.path!=source.path)){
+                        // Resolve the painter's own song, even if playback already moved on.
+                        val ownPath=if(slot.song==source.song)source.path else slot.song?.let{SongVideoPath.find(it,source.names)}
+                        if(!slot.resolved||slot.path!=ownPath){
                             slot.path?.let{path->slot.stream?.let{release(path,it)}}
-                            slot.path=source.path;slot.stream=source.path?.let{acquire(it)};slot.resolved=true
+                            slot.path=ownPath;slot.stream=ownPath?.let{acquire(it)};slot.resolved=true
                             diagnostic("Painter source bound: ${slot.song} -> ${slot.path}")
                         }
-                        val frame=slot.stream?.frame?.value ?: if(!slot.resolved||slot.path!=null)context.fallback?.frame?.value else null
+                        // Never borrow another song's frame while this decoder warms up.
+                        val frame=slot.stream?.frame?.value
                         if(frame!=null){
                             if(!slot.videoDrawn){slot.videoDrawn=true;diagnostic("Video frame drawn inside native painter: ${slot.song}")}
                             (call.args[0] as DrawScope).drawNativeVideoFrame(frame.bitmap,call.args[2] as Float,call.args[3] as ColorFilter?)
@@ -197,9 +199,16 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     }
     private fun registerPainters(root:LayoutCoordinates,session:Session){
         for(painter in HostCoverBridge.painters(root)){
-            painterBindings[painter]=session.bindings
+            // A native painter can move between the small and expanded cover roots.
+            // Transfer its existing slot rather than rebinding it to current playback.
+            val previous=painterBindings[painter]
             var slot=session.bindings.slots[painter]
-            if(slot==null){slot=Slot(WorkshopApi.playback.getCurrentMediaItem()?.path);session.bindings.slots[painter]=slot}
+            if(slot==null){
+                slot=previous?.slots?.remove(painter)
+                if(slot==null)slot=Slot(WorkshopApi.playback.getCurrentMediaItem()?.path)
+                session.bindings.slots[painter]=slot
+            }
+            painterBindings[painter]=session.bindings
             slot.seen=System.nanoTime()
         }
     }
@@ -209,19 +218,11 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     }
 }
 
-/** Draw within the original painter: native transitions, layers and reflection survive. */
+/** Native cover layers own clipping and corner shape; only replace the pixels. */
 internal fun DrawScope.drawNativeVideoFrame(bitmap:ImageBitmap,alpha:Float=1f,colorFilter:ColorFilter?=null){
-    val shortSide=minOf(size.width,size.height)
-    val corner=if(shortSide<=96.dp.toPx())2.5.dp else 8.5.dp
-    val radius=minOf(corner.toPx(),shortSide/2f)
-    val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(Rect(Offset.Zero,size),androidx.compose.ui.geometry.CornerRadius(radius)))}
-    drawContext.canvas.save()
-    try{
-        drawContext.canvas.clipPath(clip,ClipOp.Intersect)
-        drawImage(bitmap,alpha=alpha,colorFilter=colorFilter,dstSize=IntSize(size.width.roundToInt(),size.height.roundToInt()),filterQuality=FilterQuality.High)
-    }finally{drawContext.canvas.restore()}
+    drawImage(bitmap,alpha=alpha,colorFilter=colorFilter,
+        dstSize=IntSize(size.width.roundToInt(),size.height.roundToInt()),filterQuality=FilterQuality.High)
 }
-
 /** Mirror the live frame below the cover and fade it out in an isolated layer. */
 internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height:Float,radius:Float,gap:Float) {
     val top=height+gap
@@ -246,3 +247,5 @@ internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height
         } finally {canvas.restore()}
     } finally {canvas.restore()}
 }
+
+
