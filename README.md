@@ -22,3 +22,7 @@ Open the mod settings and enter up to five video filenames, including extensions
 Cover rendering: draw one primary video image with its native transformation and opacity. Rounded clipping uses 2.5 dp for previews up to 96 dp and 8.5 dp for larger covers, clamped for tiny previews. Reflection and additional image nodes are not redrawn as duplicate video layers.
 
 Song changes keep the outgoing video playing through the native cover transition until the next video has its first decoded frame. A final-frame hold of one second is inserted between video loops, without blending. Decoder startup may extend the hold on slow systems. Frame presentation remains paced at 30 fps.
+
+Video reflection: an optional live, vertically mirrored reflection below the cover, fading to transparent. Enable Video reflection in mod settings; the default is on. Changes apply without restarting the decoder.
+
+Loop pause setting: Pause 1 second between loops defaults to on. Turn it off to remove the added delay. Changing it updates running decoders and disabling it cancels an active hold.

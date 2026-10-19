@@ -40,6 +40,8 @@ public final class NativeVideo implements AutoCloseable {
     private final Consumer<String> log;
     private final Deque<Frame> retired=new ArrayDeque<>();
     private volatile boolean running;
+    private volatile boolean loopPause=true;
+    public void setLoopPause(boolean enabled){loopPause=enabled;}
     private volatile Process process;
     public NativeVideo(Path ffmpeg,Path video,Consumer<Frame> output,Consumer<String> log){
         this.ffmpeg=ffmpeg;this.video=video;this.output=output;this.log=log;
@@ -54,6 +56,7 @@ public final class NativeVideo implements AutoCloseable {
         long nextFrame=0;
         final long interval=1_000_000_000L/FPS;
         boolean first=true;
+        boolean completedLoop=false;
         try {
             while(running){
                 decoder=new ProcessBuilder(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error",
@@ -64,6 +67,7 @@ public final class NativeVideo implements AutoCloseable {
                 process=decoder;
                 if(!running){decoder.destroyForcibly();return;}
                 boolean decoded=false;
+                boolean firstInLoop=true;
                 try(InputStream input=new BufferedInputStream(decoder.getInputStream())){
                     byte[] pixels=new byte[SIZE*SIZE*4];
                     while(running){
@@ -75,13 +79,14 @@ public final class NativeVideo implements AutoCloseable {
                         decoded=true;
                         Frame frame=new Frame(pixels);
                         long remaining;
-                        while(running && (remaining=nextFrame-System.nanoTime())>0)
+                        while(running && (remaining=nextFrame+(firstInLoop && completedLoop && loopPause?1_000_000_000L:0L)-System.nanoTime())>0)
                             java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining,50_000_000L));
                         synchronized(this){
                             if(!running){frame.close();return;}
                             retired.addLast(frame);
                             output.accept(frame);
                             nextFrame=System.nanoTime()+interval;
+                            firstInLoop=false;
                             while(retired.size()>FPS*2)retired.removeFirst().close();
                         }
                         if(first){first=false;log.accept("First native video frame ready: "+video);}
@@ -90,9 +95,9 @@ public final class NativeVideo implements AutoCloseable {
                 decoder.waitFor();
                 if(running && decoder.exitValue()!=0)throw new IOException("MP4 decoder exit "+decoder.exitValue());
                 decoder=null;
-                // Leave the final frame published. Decode the next opening frame
-                // while it is held; presentation waits one full second after EOF.
-                nextFrame+=1_000_000_000L;
+                // Keep the final frame visible. Check the live pause setting while
+                // waiting on the next opening frame, so disabling it cancels the hold.
+                completedLoop=true;
             }
         }catch(Throwable error){
             if(running){log.accept("Native video failed: "+error);output.accept(null);}

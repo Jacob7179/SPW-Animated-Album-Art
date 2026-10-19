@@ -1,9 +1,23 @@
 {
   "configs": [
     {
-      "title": "Animated album art filenames",
+      "title": "Animated album art",
       "config": "config.json",
       "preferences": [
+        {
+          "key": "video_reflection",
+          "type": "switch",
+          "title": "Video reflection",
+          "summary": "Show a fading mirrored reflection of the live video below the cover. Applies immediately.",
+          "default_value": true
+        },
+        {
+          "key": "loop_pause",
+          "type": "switch",
+          "title": "Pause 1 second between loops",
+          "summary": "Hold the final video frame for one second before replaying. Turn off for no added pause. Applies immediately.",
+          "default_value": true
+        },
         {
           "key": "video_filename_1",
           "type": "edittext",

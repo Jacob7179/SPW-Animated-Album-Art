@@ -6,6 +6,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.unit.IntSize
@@ -22,19 +25,26 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     private var handle:HookHandle?=null
     @Volatile private var enabled=false
     private var settings:com.xuncorp.spw.workshop.api.config.ConfigHelper?=null
+    @Volatile private var pauseLoops=true
     private lateinit var ffmpeg:Path
-    private data class Source(val path:Path?)
+    private data class Source(val path:Path?,val reflection:Boolean=true)
     private class Stream(val decoder:NativeVideo,val frame:MutableState<NativeVideo.Frame?>,var users:Int)
     private val streams=mutableMapOf<Path,Stream>()
     @Synchronized private fun acquire(path:Path):Stream {
         streams[path]?.let{it.users++;return it}
         val state=mutableStateOf<NativeVideo.Frame?>(null)
         val decoder=NativeVideo(ffmpeg,path,{state.value=it},::diagnostic)
+        decoder.setLoopPause(pauseLoops)
         val stream=Stream(decoder,state,1);streams[path]=stream;decoder.start();return stream
     }
     @Synchronized private fun release(path:Path,stream:Stream){
         if(streams[path]!==stream)return
         if(--stream.users<=0){streams.remove(path);stream.decoder.close()}
+    }
+    @Synchronized private fun updateLoopPause(value:Boolean){
+        if(pauseLoops==value)return
+        pauseLoops=value
+        streams.values.forEach{it.decoder.setLoopPause(value)}
     }
     private fun diagnostic(message:String){
         System.err.println("Animated Cover: $message")
@@ -69,6 +79,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     val song=WorkshopApi.playback.getCurrentMediaItem()?.path
                     val config=settings
                     config?.reload()
+                    updateLoopPause(config?.get("loop_pause",true)?:true)
                     val names=(1..5).map { index ->
                         config?.get("video_filename_$index",if(index==1)"square_animated_artwork.mp4" else "")
                             ?: if(index==1)"square_animated_artwork.mp4" else ""
@@ -76,7 +87,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     val path=song?.let { SongVideoPath.find(it,names) }
                     val status="song=$song; video=$path"
                     if(last!=status){last=status;diagnostic(status)}
-                    Source(path)
+                    Source(path,config?.get("video_reflection",true)?:true)
                 }.onFailure{diagnostic("Lookup failed: $it")}.getOrDefault(Source(null))}
                 delay(100)
             }
@@ -129,13 +140,16 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             drawContext.canvas.save()
             try {
                 drawContext.canvas.concat(transform)
-                drawContext.canvas.saveLayer(rect,Paint().apply{this.alpha=alpha})
+                val gap=2.dp.toPx()
+                val layerBounds=if(source.reflection)Rect(0f,0f,rect.width,rect.height*1.45f+gap)else rect
+                drawContext.canvas.saveLayer(layerBounds,Paint().apply{this.alpha=alpha})
                 try {
                     // Small previews use the tighter corners of the native artwork.
                     val shortSide=minOf(rect.width,rect.height)
                     val corner=if(shortSide<=96.dp.toPx())2.5.dp else 8.5.dp
                     val radius=minOf(corner.toPx(),shortSide/2f)
                     val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(rect,androidx.compose.ui.geometry.CornerRadius(radius)))}
+                    if(source.reflection)drawVideoReflection(frame.bitmap,rect.width,rect.height,radius,gap)
                     drawContext.canvas.clipPath(clip,ClipOp.Intersect)
                     drawImage(frame.bitmap,dstSize=IntSize(rect.width.roundToInt(),rect.height.roundToInt()),filterQuality=FilterQuality.High)
                 } finally {drawContext.canvas.restore()}
@@ -147,4 +161,29 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         enabled=false;handle?.unhook();handle=null
         streams.values.forEach{it.decoder.close()};streams.clear();settings=null
     }
+}
+
+/** Mirror the live frame below the cover and fade it out in an isolated layer. */
+internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height:Float,radius:Float,gap:Float) {
+    val top=height+gap
+    val reflectionHeight=height*.45f
+    val bounds=Rect(0f,top,width,top+reflectionHeight)
+    val canvas=drawContext.canvas
+    canvas.save()
+    try {
+        canvas.clipRect(bounds)
+        canvas.saveLayer(bounds,Paint().apply{alpha=.24f})
+        try {
+            canvas.save()
+            try {
+                canvas.translate(0f,2f*height+gap)
+                canvas.scale(1f,-1f)
+                val clip=DrawPath().apply{addRoundRect(androidx.compose.ui.geometry.RoundRect(Rect(0f,0f,width,height),androidx.compose.ui.geometry.CornerRadius(radius)))}
+                canvas.clipPath(clip,ClipOp.Intersect)
+                drawImage(bitmap,dstSize=IntSize(width.roundToInt(),height.roundToInt()),filterQuality=FilterQuality.High)
+            } finally {canvas.restore()}
+            drawRect(brush=Brush.verticalGradient(listOf(Color.Black,Color.Transparent),startY=top,endY=top+reflectionHeight),
+                topLeft=Offset(0f,top),size=Size(width,reflectionHeight),blendMode=BlendMode.DstIn)
+        } finally {canvas.restore()}
+    } finally {canvas.restore()}
 }
