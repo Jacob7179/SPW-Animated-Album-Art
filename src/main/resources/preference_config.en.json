@@ -1,0 +1,66 @@
+{
+  "configs": [
+    {
+      "title": "Animated album art",
+      "config": "config.json",
+      "preferences": [
+        {
+          "key": "online_artwork",
+          "type": "switch",
+          "title": "Fetch online animated album art",
+          "summary": "If no local video exists, search artwork.m8tec.top using album artist and album, then cache the square video in plugin data. Off cancels pending downloads and uses local files only.",
+          "default_value": true
+        },
+        {
+          "key": "video_reflection",
+          "type": "switch",
+          "title": "Video reflection",
+          "summary": "Show a fading mirrored reflection of the live video below the cover. Applies immediately.",
+          "default_value": true
+        },
+        {
+          "key": "loop_pause",
+          "type": "switch",
+          "title": "Pause 1 second between loops",
+          "summary": "Hold the final video frame for one second before replaying. Turn off for no added pause. Applies immediately.",
+          "default_value": true
+        },
+        {
+          "key": "video_filename_1",
+          "type": "edittext",
+          "title": "Video filename 1",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": "square_animated_artwork.mp4"
+        },
+        {
+          "key": "video_filename_2",
+          "type": "edittext",
+          "title": "Video filename 2",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_3",
+          "type": "edittext",
+          "title": "Video filename 3",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_4",
+          "type": "edittext",
+          "title": "Video filename 4",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        },
+        {
+          "key": "video_filename_5",
+          "type": "edittext",
+          "title": "Video filename 5",
+          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "default_value": ""
+        }
+      ]
+    }
+  ]
+}

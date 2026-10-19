@@ -1,63 +1,63 @@
 {
   "configs": [
     {
-      "title": "Animated album art",
+      "title": "动态专辑封面",
       "config": "config.json",
       "preferences": [
         {
           "key": "online_artwork",
           "type": "switch",
-          "title": "Fetch online animated album art",
-          "summary": "If no local video exists, search artwork.m8tec.top using album artist and album, then cache the square video in plugin data. Off cancels pending downloads and uses local files only.",
+          "title": "在线获取动态专辑封面",
+          "summary": "本地没有视频时，使用专辑艺术家和专辑名称搜索 artwork.m8tec.top，并将方形视频缓存到插件数据目录。关闭后取消待处理的下载，仅使用本地文件。",
           "default_value": true
         },
         {
           "key": "video_reflection",
           "type": "switch",
-          "title": "Video reflection",
-          "summary": "Show a fading mirrored reflection of the live video below the cover. Applies immediately.",
+          "title": "视频倒影",
+          "summary": "在封面下方显示实时视频的渐隐镜像倒影。立即生效。",
           "default_value": true
         },
         {
           "key": "loop_pause",
           "type": "switch",
-          "title": "Pause 1 second between loops",
-          "summary": "Hold the final video frame for one second before replaying. Turn off for no added pause. Applies immediately.",
+          "title": "每次循环间暂停 1 秒",
+          "summary": "重播前将视频最后一帧保持 1 秒。关闭后不额外暂停。立即生效。",
           "default_value": true
         },
         {
           "key": "video_filename_1",
           "type": "edittext",
-          "title": "Video filename 1",
-          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "title": "视频文件名 1",
+          "summary": "按顺序在歌曲所在目录中查找，使用第一个存在的文件。留空则跳过，请包含扩展名。",
           "default_value": "square_animated_artwork.mp4"
         },
         {
           "key": "video_filename_2",
           "type": "edittext",
-          "title": "Video filename 2",
-          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "title": "视频文件名 2",
+          "summary": "按顺序在歌曲所在目录中查找，使用第一个存在的文件。留空则跳过，请包含扩展名。",
           "default_value": ""
         },
         {
           "key": "video_filename_3",
           "type": "edittext",
-          "title": "Video filename 3",
-          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "title": "视频文件名 3",
+          "summary": "按顺序在歌曲所在目录中查找，使用第一个存在的文件。留空则跳过，请包含扩展名。",
           "default_value": ""
         },
         {
           "key": "video_filename_4",
           "type": "edittext",
-          "title": "Video filename 4",
-          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "title": "视频文件名 4",
+          "summary": "按顺序在歌曲所在目录中查找，使用第一个存在的文件。留空则跳过，请包含扩展名。",
           "default_value": ""
         },
         {
           "key": "video_filename_5",
           "type": "edittext",
-          "title": "Video filename 5",
-          "summary": "Checked in order beside the song. First existing file wins. Leave blank to skip. Include the extension.",
+          "title": "视频文件名 5",
+          "summary": "按顺序在歌曲所在目录中查找，使用第一个存在的文件。留空则跳过，请包含扩展名。",
           "default_value": ""
         }
       ]

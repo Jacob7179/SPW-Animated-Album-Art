@@ -129,7 +129,7 @@ public final class OnlineArtwork implements AutoCloseable {
         connection.setConnectTimeout(10000);connection.setReadTimeout(25000);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept","application/json");
-        connection.setRequestProperty("User-Agent","SPW-Animated-Album-Art/0.4.0");
+        connection.setRequestProperty("User-Agent","SPW-Animated-Album-Art/0.4.1");
         try{
             int status=connection.getResponseCode();
             if(status==404)return null;

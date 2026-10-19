@@ -4,7 +4,7 @@
 
 <h1 align="center">SPW Animated Album Art</h1>
 
-Salt Player 1.19.0 Windows mod. Put square_animated_artwork.mp4 beside the song and import plugin-com.spw.animated.album.art-0.4.0.spmod.
+Salt Player 1.19.0 Windows mod. Put square_animated_artwork.mp4 beside the song and import plugin-com.spw.animated.album.art-0.4.1.spmod.
 
 Video replaces the cover pixels in the native cover canvas. The brightness filter and its preference have been removed; decoded source colors are rendered directly. Existing dim_video settings are ignored.
 
@@ -48,4 +48,10 @@ The online artwork feature uses the public API of [Apple Music Animated Artworks
 SPW Animated Album Art and its independently written API client remain licensed under the [MIT License](LICENSE). No upstream software license was identified for the external project during review; this attribution does not grant permission or claim that the service is MIT-licensed. The project's MIT License does not cover the external service, downloaded Apple Music artwork, or third-party trademarks. Service use and artwork rights remain subject to the applicable terms and rights holders.
 
 See [Third-party notices](licenses/THIRD_PARTY_NOTICES.md) for details. FFmpeg's separate license notices are provided in [licenses/](licenses/).
+
+## Version 0.4.1: Languages / 语言
+
+The settings default to Simplified Chinese (`src/main/resources/preference_config.json`). An English alternative is provided in `src/main/resources/preference_config.en.json`. Salt Player 1.19.0 reads only `preference_config.json`; there is no automatic language selection or in-app language selector for these mod settings. To build an English version, copy the English resource over `preference_config.json` before building. Configuration keys, defaults and saved preferences remain compatible. Runtime diagnostic logs remain in English.
+
+设置界面默认使用简体中文（`src/main/resources/preference_config.json`），并提供英语资源 `src/main/resources/preference_config.en.json`。Salt Player 1.19.0 只读取 `preference_config.json`，这些插件设置不支持自动语言切换或界面内语言选择。若需构建英语版本，请先用英语资源替换 `preference_config.json`。配置键、默认值及已保存的设置保持兼容。运行诊断日志仍使用英语。
 

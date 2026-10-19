@@ -18,7 +18,7 @@ $manifest=@'
 Manifest-Version: 1.0
 Plugin-Class: com.spw.animated.album.art.MainPlugin
 Plugin-Id: com.spw.animated.album.art
-Plugin-Version: 0.4.0
+Plugin-Version: 0.4.1
 Plugin-Provider: Jacob
 Plugin-Name: Animated Cover Video
 Plugin-Description: Native cover-canvas MP4 replacement
@@ -31,7 +31,7 @@ Copy-Item "$PSScriptRoot/licenses/FFmpeg-*" "$stage/licenses/"
 Copy-Item "$PSScriptRoot/README.md" "$stage/README.md"
 Copy-Item "$PSScriptRoot/src/main/resources/*" $classes
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$package=Join-Path $PSScriptRoot 'AnimatedCover-0.4.0.spmod'
+$package=Join-Path $PSScriptRoot 'AnimatedCover-0.4.1.spmod'
 if(Test-Path -LiteralPath $package){Remove-Item -LiteralPath $package}
 [IO.Compression.ZipFile]::CreateFromDirectory($stage,$package,[IO.Compression.CompressionLevel]::Optimal,$false)
 Write-Host "Built: $package"
