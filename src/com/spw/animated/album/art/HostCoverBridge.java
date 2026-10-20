@@ -10,10 +10,16 @@ import java.util.List;
 
 /** Call the original cover from a different call site, outside the registered UI replacement. */
 public final class HostCoverBridge {
+    private static final ClassValue<java.util.Optional<java.lang.reflect.Field>> painterField=new ClassValue<>(){
+        protected java.util.Optional<java.lang.reflect.Field> computeValue(Class<?> type){
+            if(!androidx.compose.ui.node.ModifierNodeElement.class.isAssignableFrom(type))return java.util.Optional.empty();
+            try{return java.util.Optional.of(HostMethods.instanceField(type,androidx.compose.ui.graphics.painter.Painter.class));}
+            catch(IllegalStateException unavailable){return java.util.Optional.empty();}
+        }
+    };
     @SuppressWarnings("unchecked")
     public static void draw(List<Object> args, Modifier modifier, Composer composer) {
-        androidx.compose.ui.א.Ϳ((Function0<Unit>)args.get(0), (Boolean)args.get(1),
-            (Boolean)args.get(2), (Boolean)args.get(3), modifier, composer, 0, 0);
+        HostCoverTarget.draw(new Object[]{args.get(0),args.get(1),args.get(2),args.get(3),modifier,composer,0,0});
     }
 /** The decoder and mipmap painter share these exact native resource identities. */
     public static Object imageSource(Object result) {
@@ -53,10 +59,9 @@ public final class HostCoverBridge {
     private static void collectPainters(LayoutNode node,java.util.List<Object> result){
         if(!node.isAttached())return;
         node.getModifier().any(element->{
-            if(element.getClass().getName().contains("PainterElement")){
+            if(painterField.get(element.getClass()).isPresent()){
                 try{
-                    java.lang.reflect.Method getter=element.getClass().getDeclaredMethod("getPainter");
-                    getter.setAccessible(true);result.add(getter.invoke(element));
+                    result.add(painterField.get(element.getClass()).orElseThrow().get(element));
                 }catch(ReflectiveOperationException | RuntimeException ignored){}
             }
             return false;
@@ -68,34 +73,13 @@ public final class HostCoverBridge {
     }
     private static void invalidateImages(LayoutNode node) {
         if(!node.isAttached())return;
-        if(node.getModifier().any(element->element.getClass().getName().contains("PainterElement")))
+        if(node.getModifier().any(element->painterField.get(element.getClass()).isPresent()))
             node.getInnerCoordinator$ui().invalidateLayer();
         for(LayoutNode child:node.getChildren$ui())invalidateImages(child);
     }
-    private static final java.lang.reflect.Field layerAlpha;
-    static {
-        java.lang.reflect.Field field=null;
-        try{field=NodeCoordinator.class.getDeclaredField("lastLayerAlpha");field.setAccessible(true);}
-        catch(ReflectiveOperationException | RuntimeException ignored){}
-        layerAlpha=field;
-    }
-    public static float transitionAlpha(LayoutCoordinates image,LayoutCoordinates root) {
-        float alpha=1f;
-        if(!(image instanceof NodeCoordinator current))return alpha;
-        int guard=0;
-        while(current!=null && current!=root && guard++<100) {
-            if(layerAlpha!=null && current.getLayer()!=null) {
-                try{alpha*=layerAlpha.getFloat(current);}catch(IllegalAccessException ignored){}
-            }
-            NodeCoordinator next=current.getWrappedBy$ui();
-            if(next==null && current.getParentCoordinates() instanceof NodeCoordinator parent)next=parent;
-            current=next;
-        }
-        return Math.max(0f,Math.min(1f,alpha));
-    }
     private static LayoutNode find(LayoutNode node, LayoutNode best) {
         if(!node.isAttached()) return best;
-        boolean image=node.getModifier().any(element -> element.getClass().getName().contains("PainterElement"));
+        boolean image=node.getModifier().any(element -> painterField.get(element.getClass()).isPresent());
         if(image) {
             if(best==null || area(node)>area(best)) best=node;
         }
@@ -106,6 +90,8 @@ public final class HostCoverBridge {
         return (long)node.getWidth()*node.getHeight();
     }
 }
+
+
 
 
 

@@ -15,7 +15,7 @@ plugins {
 }
 
 group = "com.spw.animated.album.art"
-version = "0.4.3"
+version = "0.4.4"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -64,7 +64,7 @@ spmod {
     PluginId = "com.spw.animated.album.art"
     PluginName = "SPW Animated Album Art"
     PluginDescription = "Native cover-canvas MP4 replacement"
-    PluginVersion = "0.4.3"
+    PluginVersion = "0.4.4"
     PluginProvider = "Jacob7179"
     PluginHasConfig = true
     PluginPermissions = listOf(PluginPermission.CLASS_TRANSFORM, PluginPermission.LIBRARY_READ)
@@ -72,24 +72,24 @@ spmod {
 }
 
 
-// NativeVideo opens pluginPath/bin/ffmpeg.exe, outside the classes directory.
+// Bundle only the two runtime executables; exclude full FFmpeg distributions.
 tasks.named("plugin") {
     inputs.dir("bin")
     inputs.dir("licenses")
     doFirst {
-        require(file("bin/ffmpeg.exe").isFile) { "Missing bin/ffmpeg.exe" }
+        listOf("bin/ffmpeg.exe", "bin/ffmpeg").forEach { require(file(it).isFile) { "Missing $it" } }
     }
     doLast {
         val packages = fileTree(layout.buildDirectory.dir("libs")) { include("*.spmod") }
         require(!packages.isEmpty) { "Workshop did not produce a .spmod" }
         packages.forEach { archive ->
-            val assets = listOf("bin", "licenses").flatMap { folder ->
-                file(folder).walkTopDown().filter { it.isFile }.toList()
-            }.associateBy { it.relativeTo(projectDir).invariantSeparatorsPath }
+            val assets = (listOf(file("bin/ffmpeg.exe"), file("bin/ffmpeg")) +
+                file("licenses").walkTopDown().filter { it.isFile }.toList()
+            ).associateBy { it.relativeTo(projectDir).invariantSeparatorsPath }
             val temporary = archive.resolveSibling(archive.name + ".tmp")
             ZipFile(archive).use { input ->
                 ZipOutputStream(temporary.outputStream().buffered()).use { output ->
-                    input.entries().asSequence().filter { it.name !in assets }.forEach { entry ->
+                    input.entries().asSequence().filter { it.name !in assets && !it.name.startsWith("bin/") }.forEach { entry ->
                         output.putNextEntry(ZipEntry(entry.name))
                         if (!entry.isDirectory) input.getInputStream(entry).use { it.copyTo(output) }
                         output.closeEntry()

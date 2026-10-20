@@ -30,7 +30,7 @@ public final class NativeCoverBootstrap implements AutoCloseable {
         }
         Paint retained=null;
         try{
-            long size=(Long)Painter.class.getMethod("getIntrinsicSize-NH-jbRc").invoke(painter);
+            long size=(Long)HostMethods.resolve().intrinsicSize().invoke(painter);
             int width=Math.round(Float.intBitsToFloat((int)(size>>>32)));
             int height=Math.round(Float.intBitsToFloat((int)size));
             if(width<=0||height<=0||width>8192||height>8192)return;
@@ -43,7 +43,7 @@ public final class NativeCoverBootstrap implements AutoCloseable {
         finally{if(retained!=null)retained.close();}
     }
     private static int generation(){
-        return PlaybackMonitor.INSTANCE.getArtworkState$Voxzen_composeApp().getValue().getGeneration();
+        return HostMethods.artworkGeneration();
     }
     private final class Job implements Runnable {
         final Object token;final String song;final int revision,width,height;final Paint retained;
@@ -56,8 +56,7 @@ public final class NativeCoverBootstrap implements AutoCloseable {
                 if(!valid())return;
                 int[] existing=sample(retained,width,height);
                 if(Arrays.stream(existing).distinct().limit(16).count()<16)return; // Ignore solid placeholders.
-                Method read=TagParser.class.getMethod("readImage-0E7RQCE",String.class,int.class,int.class);
-                Object image=read.invoke(TagParser.INSTANCE,song,width,height);
+                Object image=HostMethods.readImage(song,width,height);
                 Object decoded=HostCoverBridge.imageSource(image);
                 if(!(decoded instanceof Bitmap bitmap)||!valid())return;
                 try(Shader expected=shader(bitmap);Paint expectedPaint=new Paint()){
@@ -73,7 +72,7 @@ public final class NativeCoverBootstrap implements AutoCloseable {
         }
     }
     static Shader shader(Bitmap bitmap)throws ReflectiveOperationException{
-        return (Shader)Bitmap.class.getMethod("makeShader-lLMeGNU",FilterTileMode.class,FilterTileMode.class,SamplingMode.class,float[].class)
+        return (Shader)HostMethods.resolve().makeShader()
             .invoke(bitmap,FilterTileMode.CLAMP,FilterTileMode.CLAMP,new FilterMipmap(FilterMode.LINEAR,MipmapMode.LINEAR),null);
     }
     static int[] sample(Paint paint,int width,int height){
@@ -93,3 +92,4 @@ public final class NativeCoverBootstrap implements AutoCloseable {
         attempted.clear();
     }
 }
+

@@ -31,6 +31,7 @@ public final class OnlineArtwork implements AutoCloseable {
     private volatile boolean enabled,closed;
     private volatile long generation;
     private volatile Process process;
+    private String metadataWarning="";
     public OnlineArtwork(Path cache,Path ffmpeg,Consumer<String> log){
         this.cache=cache;this.ffmpeg=ffmpeg;this.log=log;
         this.search=this::search;this.download=this::download;
@@ -40,8 +41,7 @@ public final class OnlineArtwork implements AutoCloseable {
     }
     public static Path cacheDirectory(Object config,Path pluginRoot){
         try{
-            Object path=Class.forName("com.xuncorp.spw.workshop.api.config.ConfigHelper")
-                .getMethod("getConfigPath").invoke(config);
+            Object path=HostMethods.method(Class.forName("com.xuncorp.spw.workshop.api.config.ConfigHelper"),Path.class,false).invoke(config);
             if(path instanceof Path p)return p.toAbsolutePath().getParent().resolve("cache/animated-artwork");
         }catch(ReflectiveOperationException | RuntimeException ignored){}
         return pluginRoot.resolve("cache/animated-artwork");
@@ -49,6 +49,7 @@ public final class OnlineArtwork implements AutoCloseable {
     public synchronized void setEnabled(boolean value){
         if(enabled==value||closed)return;
         enabled=value;generation++;
+        log.accept("Online artwork "+(value?"enabled":"disabled")+"; cache="+cache);
         if(!value){
             pending.values().forEach(f->f.cancel(true));pending.clear();
             Process p=process;if(p!=null)p.destroyForcibly();
@@ -56,9 +57,14 @@ public final class OnlineArtwork implements AutoCloseable {
     }
     /** Returns only this album's completed cache entry. Starts at most one job per album. */
     public synchronized Path lookup(String artist,String album){
-        if(!enabled||closed||artist==null||album==null||artist.isBlank()||album.isBlank())return null;
+        if(!enabled||closed)return null;
+        if(artist==null||album==null||artist.isBlank()||album.isBlank()){
+            String warning="Online artwork skipped: missing artist/album; artist="+artist+"; album="+album;
+            if(!warning.equals(metadataWarning)){metadataWarning=warning;log.accept(warning);}return null;
+        }
+        metadataWarning="";
         Album request=new Album(artist.trim(),album.trim());String key=request.key();
-        Path file=cache.resolve(hash(key)+".mp4");
+        Path file=cache.resolve("complete-"+hash(key)+".mp4");
         try{
             if(Files.isRegularFile(file)&&Files.size(file)>32)return file;
             if(Files.isRegularFile(file))Files.delete(file);
@@ -74,11 +80,13 @@ public final class OnlineArtwork implements AutoCloseable {
         Path temp=null;long retry=Duration.ofMinutes(10).toMillis();
         try{
             if(!active(token))return;
+            log.accept("Online artwork searching: "+album.artist()+" / "+album.album());
             Match found=search.find(album);
             if(!active(token))return;
-            if(found==null||!matches(album,found)) {retry=Duration.ofHours(24).toMillis();return;}
+            if(found==null||!matches(album,found)) {log.accept("Online artwork no matching square video: "+album.artist()+" / "+album.album());retry=Duration.ofHours(24).toMillis();return;}
             if(!appleVideoUrl(found.url()))throw new IOException("Unrecognized artwork video host");
             Files.createDirectories(cache);temp=Files.createTempFile(cache,"download-",".mp4");
+            log.accept("Online artwork downloading: "+album.artist()+" / "+album.album());
             download.save(found.url(),temp);
             if(!active(token))return;
             if(Files.size(temp)<=32)throw new IOException("Empty artwork download");
@@ -89,7 +97,7 @@ public final class OnlineArtwork implements AutoCloseable {
             }
             log.accept("Online artwork cached for "+album.artist()+" / "+album.album());
         }catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
-        catch(Exception error){if(active(token))log.accept("Online artwork unavailable: "+error.getClass().getSimpleName());}
+        catch(Exception error){if(active(token))log.accept("Online artwork unavailable: "+error.getClass().getSimpleName()+": "+error.getMessage()+"; retry in 10 minutes");}
         finally{
             if(temp!=null)try{Files.deleteIfExists(temp);}catch(IOException ignored){}
             synchronized(this){if(generation==token){pending.remove(key);retries.put(key,System.currentTimeMillis()+retry);}}
@@ -129,7 +137,7 @@ public final class OnlineArtwork implements AutoCloseable {
         connection.setConnectTimeout(10000);connection.setReadTimeout(25000);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept","application/json");
-        connection.setRequestProperty("User-Agent","SPW-Animated-Album-Art/0.4.3");
+        connection.setRequestProperty("User-Agent","SPW-Animated-Album-Art/0.4.4");
         try{
             int status=connection.getResponseCode();
             if(status==404)return null;
@@ -141,29 +149,98 @@ public final class OnlineArtwork implements AutoCloseable {
             }
         }finally{connection.disconnect();}
     }
+    // Prefer a moderate SDR H.264 variant, rather than whichever stream FFmpeg picks first.
+    static String variant(String text,String base){
+        String[] lines=text.split("\\R");String best=null;long score=Long.MAX_VALUE;
+        var resolution=java.util.regex.Pattern.compile("RESOLUTION=(\\d+)x(\\d+)");
+        for(int i=0;i+1<lines.length;i++){
+            String line=lines[i];
+            if(!line.startsWith("#EXT-X-STREAM-INF:")||!line.contains("avc1")||line.contains("VIDEO-RANGE=PQ")||line.contains("VIDEO-RANGE=HLG"))continue;
+            var match=resolution.matcher(line);if(!match.find())continue;
+            int width=Integer.parseInt(match.group(1)),height=Integer.parseInt(match.group(2));
+            if(width!=height||width>1080)continue;
+            String next=lines[i+1].trim();if(next.isEmpty()||next.startsWith("#"))continue;
+            String url=URI.create(base).resolve(next).toString();if(!appleVideoUrl(url))continue;
+            long distance=Math.abs(width-720);if(distance<score){best=url;score=distance;}
+        }
+        return best;
+    }
+    // Apple often describes one complete MP4 using consecutive HLS byte ranges.
+    // Reading that MP4 once avoids repeated-range responses corrupting later fragments.
+    static String singleFile(String text,String base){
+        if(!text.contains("#EXT-X-ENDLIST")||text.contains("#EXT-X-KEY:"))return null;
+        var map=java.util.regex.Pattern.compile("#EXT-X-MAP:URI=\"([^\"]+)\",BYTERANGE=\"(\\d+)@0\"").matcher(text);
+        if(!map.find())return null;
+        String target=URI.create(base).resolve(map.group(1)).toString();
+        if(!appleVideoUrl(target))return null;
+        long expected=Long.parseLong(map.group(2));boolean ranged=false,found=false;
+        for(String line:text.split("\\R")){
+            line=line.trim();
+            if(line.startsWith("#EXT-X-BYTERANGE:")){
+                if(ranged)return null;
+                String[] parts=line.substring(17).split("@");
+                if(parts.length>2)return null;
+                long size=Long.parseLong(parts[0]);
+                if(size<=0||(parts.length==2&&Long.parseLong(parts[1])!=expected))return null;
+                expected+=size;ranged=true;
+            }else if(!line.isEmpty()&&!line.startsWith("#")){
+                if(!ranged||!URI.create(base).resolve(line).toString().equals(target))return null;
+                ranged=false;found=true;
+            }
+        }
+        return found&&!ranged?target:null;
+    }
+    private String playlist(String url)throws Exception{
+        if(!appleVideoUrl(url))throw new IOException("Unrecognized playlist host");
+        HttpURLConnection connection=(HttpURLConnection)URI.create(url).toURL().openConnection();
+        connection.setConnectTimeout(10000);connection.setReadTimeout(25000);connection.setInstanceFollowRedirects(false);
+        try{
+            int status=connection.getResponseCode();if(status!=200)throw new IOException("Artwork playlist HTTP "+status);
+            try(InputStream body=connection.getInputStream()){
+                byte[] bytes=body.readNBytes(524289);if(bytes.length>524288)throw new IOException("Artwork playlist too large");
+                String text=new String(bytes,StandardCharsets.UTF_8);if(!text.startsWith("#EXTM3U"))throw new IOException("Invalid artwork playlist");return text;
+            }
+        }finally{connection.disconnect();}
+    }
+    private String downloadSource(String url)throws Exception{
+        if(!URI.create(url).getPath().endsWith(".m3u8"))return url;
+        String text=playlist(url),selected=variant(text,url);
+        if(selected!=null){url=selected;text=playlist(url);}
+        String direct=singleFile(text,url);
+        if(direct!=null){log.accept("Online artwork: downloading complete single-file MP4");return direct;}
+        return url;
+    }
     private void download(String url,Path output) throws Exception {
-        run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-y",
+        url=downloadSource(url);
+        run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
             "-protocol_whitelist","https,tls,tcp,crypto","-rw_timeout","15000000","-i",url,
             "-map","0:v:0","-an","-sn","-dn","-t","120","-fs","104857600",
-            "-vf","scale=720:720:force_original_aspect_ratio=increase,crop=720:720",
-            "-c:v","libx264","-preset","veryfast","-crf","20","-pix_fmt","yuv420p","-movflags","+faststart",output.toString()),90);
-        // Reject incomplete/non-video output before exposing the file to the renderer.
+            "-c:v","copy","-movflags","+faststart",output.toString()),90);
+        // Decode the entire cached clip before publishing it, rather than validating only its first frame.
         run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror",
-            "-i",output.toString(),"-map","0:v:0","-frames:v","1","-f","null","-"),15);
+            "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-f","null","-"),90);
     }
     private void run(List<String> command,int seconds)throws Exception{
         if(!enabled||closed||Thread.currentThread().isInterrupted())throw new InterruptedException();
-        Process p=new ProcessBuilder(command).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        Path errors=Files.createTempFile(cache,"ffmpeg-",".log");
+        Process p;
+        try{p=new ProcessBuilder(command).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(errors.toFile()).start();}
+        catch(Exception failure){Files.deleteIfExists(errors);throw failure;}
         process=p;
-        if(!enabled||closed||Thread.currentThread().isInterrupted()){p.destroyForcibly();throw new InterruptedException();}
+        if(!enabled||closed||Thread.currentThread().isInterrupted()){p.destroyForcibly();Files.deleteIfExists(errors);throw new InterruptedException();}
         try{
             if(!p.waitFor(seconds,TimeUnit.SECONDS)){throw new IOException("Artwork conversion timed out");}
-            if(p.exitValue()!=0)throw new IOException("Artwork conversion failed");
-        }finally{p.destroyForcibly();if(process==p)process=null;}
+            if(p.exitValue()!=0){
+                String detail;
+                try(InputStream input=Files.newInputStream(errors)){detail=new String(input.readNBytes(4096),StandardCharsets.UTF_8);}
+                throw new IOException("FFmpeg exit "+p.exitValue()+": "+detail);
+            }
+        }finally{p.destroyForcibly();if(process==p)process=null;try{Files.deleteIfExists(errors);}catch(IOException ignored){}}
     }
     public synchronized void close(){
         setEnabled(false);closed=true;worker.shutdownNow();
     }
 }
+
 
 

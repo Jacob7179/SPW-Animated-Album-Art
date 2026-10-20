@@ -28,6 +28,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
     @Volatile private var pauseLoops=true
     private lateinit var ffmpeg:Path
     private var online:OnlineArtwork?=null
+    private var onlineMonitor:CoroutineScope?=null
     private data class Source(val song:String?=null,val path:Path?=null,
         val names:List<String> = listOf("square_animated_artwork.mp4","","","",""),val reflection:Boolean=true)
     private class Stream(val decoder:NativeVideo,val frame:MutableState<NativeVideo.Frame?>,var users:Int)
@@ -89,7 +90,11 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         check(pluginContext.spwVersion=="1.19.0"){"Requires Salt Player 1.19.0"}
         check(WorkshopApi.manager.isPermissionGranted(PluginPermission.CLASS_TRANSFORM)&&WorkshopApi.manager.isPermissionGranted(PluginPermission.LIBRARY_READ)){"Grant Class transform and Library read"}
         var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
-        ffmpeg=root.resolve("bin/ffmpeg.exe");check(Files.isRegularFile(ffmpeg)){"Missing bundled MP4 decoder"}
+        ffmpeg=DecoderExecutable.resolve(root)
+        val coverTarget=HostCoverTarget.resolve(javaClass.classLoader)
+        val nativeMethods=HostMethods.resolve()
+        diagnostic("Resolved native methods: $nativeMethods")
+        diagnostic("Native cover target: ${coverTarget.owner()}.${coverTarget.method()} in ${coverTarget.caller()}; decoder=$ffmpeg")
         settings=WorkshopApi.manager.createConfigManager().getConfig()
         online=OnlineArtwork(OnlineArtwork.cacheDirectory(settings,root),ffmpeg,java.util.function.Consumer<String>{diagnostic(it)})
         bootstrap=NativeCoverBootstrap(origins,java.util.function.Supplier<String?>{WorkshopApi.playback.getCurrentMediaItem()?.path},java.util.function.Consumer<String>{diagnostic(it)})
@@ -97,8 +102,8 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         try{
             // Capture the actual decoder request, not a later playback-state snapshot.
             handles+=WorkshopApi.hookRegistrar.hookMethod(
-                className="com.xuncorp.voxzen.tag.TagParser",methodName="readImage-0E7RQCE",
-                parameterTypes=listOf("java.lang.String","int","int")
+                className=nativeMethods.readImage().declaringClass.name,methodName=nativeMethods.readImage().name,
+                parameterTypes=nativeMethods.readImage().parameterTypes.map{it.name}
             ){
                 after{call->
                     if(enabled&&call.throwable==null){
@@ -109,18 +114,18 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
             // The host discards the bitmap after making its mipmap shader. Carry
             // provenance onto that shader before it is attached to a native painter.
             handles+=WorkshopApi.hookRegistrar.hookMethod(
-                className="org.jetbrains.skia.Bitmap",methodName="makeShader-lLMeGNU",
-                parameterTypes=listOf("org.jetbrains.skia.FilterTileMode","org.jetbrains.skia.FilterTileMode","org.jetbrains.skia.SamplingMode","[F")
+                className=nativeMethods.makeShader().declaringClass.name,methodName=nativeMethods.makeShader().name,
+                parameterTypes=nativeMethods.makeShader().parameterTypes.map{it.name}
             ){
                 after{call->if(enabled&&call.throwable==null)origins.propagate(call.thisObject,call.result)}
             }
             handles+=WorkshopApi.hookRegistrar.replaceComposable(
-                className="androidx.compose.ui.\u05d0",methodName="\u037f",inClass="androidx.compose.ui.\u05d7",
+                className=coverTarget.owner(),methodName=coverTarget.method(),inClass=coverTarget.caller(),
                 parameterTypes=listOf("kotlin.jvm.functions.Function0","boolean","boolean","boolean","androidx.compose.ui.Modifier")
             ){call->CoverScope(call)}
             handles+=WorkshopApi.hookRegistrar.hookMethod(
-                className="androidx.compose.ui.graphics.painter.Painter",methodName="draw-x_KDEd0",
-                parameterTypes=listOf("androidx.compose.ui.graphics.drawscope.DrawScope","long","float","androidx.compose.ui.graphics.ColorFilter")
+                className=nativeMethods.painterDraw().declaringClass.name,methodName=nativeMethods.painterDraw().name,
+                parameterTypes=nativeMethods.painterDraw().parameterTypes.map{it.name}
             ){
                 before{call->
                     val painter=call.thisObject
@@ -150,7 +155,26 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                 }
             }
             diagnostic("Native image painter registered; no video overlay or bounding-box redraw")
-        }catch(error:Throwable){enabled=false;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
+            // Fetching must not depend on the full-screen cover composable being mounted.
+            onlineMonitor=CoroutineScope(SupervisorJob()+Dispatchers.IO).also{scope->scope.launch{
+                var previous=""
+                while(isActive&&enabled){
+                    runCatching{
+                        val config=settings;config?.reload()
+                        val allow=config?.get("online_artwork",true)?:true
+                        online?.setEnabled(allow)
+                        val media=WorkshopApi.playback.getCurrentMediaItem()
+                        val names=(1..5).map{index->config?.get("video_filename_$index",if(index==1)"square_animated_artwork.mp4" else "")?:""}
+                        val local=media?.path?.let{SongVideoPath.find(it,names)}
+                        val artist=if(media?.albumArtist.isNullOrBlank())media?.artist else media?.albumArtist
+                        val status="Online artwork monitor: enabled=$allow; song=${media?.path}; artist=$artist; album=${media?.album}; local=$local"
+                        if(status!=previous){previous=status;diagnostic(status)}
+                        if(allow&&local==null)online?.lookup(artist,media?.album)
+                    }.onFailure{diagnostic("Online artwork monitor failed: $it")}
+                    delay(1000)
+                }
+            }}
+        }catch(error:Throwable){enabled=false;onlineMonitor?.cancel();onlineMonitor=null;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
     }
     @Composable private fun CoverScope(call:UiHookCall){
         val source by produceState(Source()){
@@ -248,7 +272,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         }
     }
     @Synchronized override fun stop(){
-        enabled=false;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
+        enabled=false;onlineMonitor?.cancel();onlineMonitor=null;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.reversed().forEach{it.unhook()};handles.clear()
         streams.values.forEach{it.decoder.close()};streams.clear();painterBindings.clear();origins.clear();settings=null
     }
 }
@@ -282,6 +306,9 @@ internal fun DrawScope.drawVideoReflection(bitmap:ImageBitmap,width:Float,height
         } finally {canvas.restore()}
     } finally {canvas.restore()}
 }
+
+
+
 
 
 
