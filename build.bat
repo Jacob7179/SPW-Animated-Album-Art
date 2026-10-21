@@ -11,6 +11,9 @@ echo.
 echo Checking project, PATH and installed FFmpeg; downloading only if needed...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-ffmpeg.ps1" -ProjectRoot "%CD%"
 if errorlevel 1 goto ffmpegfail
+echo Checking Linux x64 FFmpeg for cross-platform .spmod packaging...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-linux-ffmpeg.ps1" -ProjectRoot "%CD%"
+if errorlevel 1 goto ffmpegfail
 set "PATH=%CD%\bin;%PATH%"
 echo.
 echo Checking JDK 25; downloading it automatically if needed...

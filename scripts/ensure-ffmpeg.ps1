@@ -85,14 +85,40 @@ try {
     $work = Join-Path $ProjectRoot ('.ffmpeg-download-' + [guid]::NewGuid().ToString('N'))
     try {
         New-Item -ItemType Directory -Path $work | Out-Null
-        $archive = Join-Path $work 'ffmpeg.zip'
-        $url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
-        Write-Host "No usable FFmpeg found. Downloading $url"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
-        Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $work 'unpacked')
-        $found = Get-ChildItem -LiteralPath (Join-Path $work 'unpacked') -Filter ffmpeg.exe -File -Recurse | Select-Object -First 1
-        if (!$found -or !(Install-Ffmpeg $found.FullName)) { throw 'Downloaded archive has no usable FFmpeg.' }
+        # GitHub first. These are independent Windows x64 builds; the final
+        # source is the original Gyan download endpoint.
+        $sources = @(
+            @{ Name = 'GitHub (BtbN, GPL static)'; Url = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' },
+            @{ Name = 'Gyan official (release essentials)'; Url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' }
+        )
+        $installed = $false
+        foreach ($source in $sources) {
+            $attempt = Join-Path $work ([guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $attempt | Out-Null
+            $archive = Join-Path $attempt 'ffmpeg.zip'
+            $unpacked = Join-Path $attempt 'unpacked'
+            Write-Host ('Trying ' + $source.Name + ': ' + $source.Url)
+            try {
+                Invoke-WebRequest -Uri $source.Url -OutFile $archive -UseBasicParsing -TimeoutSec 120 -MaximumRedirection 10
+                # Reject tiny HTML error pages and broken ZIP downloads.
+                if ((Get-Item -LiteralPath $archive).Length -lt 1048576) { throw 'Downloaded file is unexpectedly small.' }
+                Expand-Archive -LiteralPath $archive -DestinationPath $unpacked -ErrorAction Stop
+                $found = Get-ChildItem -LiteralPath $unpacked -Filter ffmpeg.exe -File -Recurse |
+                    Where-Object { $_.FullName -match '(?i)[\/]bin[\/]ffmpeg\.exe$' } |
+                    Select-Object -First 1
+                if (!$found) { $found = Get-ChildItem -LiteralPath $unpacked -Filter ffmpeg.exe -File -Recurse | Select-Object -First 1 }
+                if (!$found -or !(Install-Ffmpeg $found.FullName)) { throw 'Downloaded archive has no usable FFmpeg.' }
+                $installed = $true
+                Write-Host ('FFmpeg installed successfully from ' + $source.Name)
+                break
+            } catch {
+                Write-Warning ('FFmpeg source failed (' + $source.Name + '): ' + $_.Exception.Message)
+            } finally {
+                if (Test-Path -LiteralPath $attempt) { Remove-Item -LiteralPath $attempt -Recurse -Force }
+            }
+        }
+        if (!$installed) { throw 'All Windows FFmpeg download sources failed. You can also install FFmpeg with winget, then rerun build.bat.' }
     } finally {
         if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
     }
