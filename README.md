@@ -21,6 +21,7 @@ Bundled FFmpeg licensing is in licenses/. Build with build.ps1 and JDK 25; requi
 - Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and correct the reported duration.
 - Held the opening video frame until it is drawn by the native cover, preventing playback from advancing unseen.
 - New cache filenames use the `normalized-` prefix so older files with offset timestamps are downloaded again.
+- Fixed Linux startup when the host class loader does not provide `CodeSource.location`; host discovery now falls back to class resources and the JVM classpath.
 
 ## Third-party attribution and licensing
 
@@ -40,7 +41,7 @@ Requires JDK 25 and the configured Salt Player host archive. Run `build.bat` on 
 
 Place the Windows executable at `bin/ffmpeg.exe` and the Linux x86-64 executable at `bin/ffmpeg` before building. Packaging includes only these two executables and license notices, excluding other files from an FFmpeg distribution. On Linux, owner execute permission is restored automatically. The binary must match the system architecture and be on a filesystem that allows execution.
 
-Native cover methods are located dynamically using source traces, JVM signatures and type features. There is no fixed Salt Player version restriction; missing or ambiguous API features produce diagnostics. This does not guarantee compatibility with every release.
+Native cover methods are located dynamically using source traces, JVM signatures and type features. Host archive discovery supports missing `CodeSource.location` values by checking class resources, class-loader URLs and the JVM classpath. Only locations containing the expected host class are accepted; an unavailable host produces a diagnostic instead of a null-pointer failure. There is no fixed Salt Player version restriction; missing or ambiguous API features produce diagnostics. This does not guarantee compatibility with every release.
 
 ## Online downloads and logs
 
