@@ -64,7 +64,7 @@ public final class OnlineArtwork implements AutoCloseable {
         }
         metadataWarning="";
         Album request=new Album(artist.trim(),album.trim());String key=request.key();
-        Path file=cache.resolve("normalized-"+hash(key)+".mp4");
+        Path file=cache.resolve("timing-v3-"+hash(key)+".mp4");
         try{
             if(Files.isRegularFile(file)&&Files.size(file)>32)return file;
             if(Files.isRegularFile(file))Files.delete(file);
@@ -218,7 +218,17 @@ public final class OnlineArtwork implements AutoCloseable {
             try{
                 downloadMp4(url,original);
                 log.accept("Online artwork: normalizing MP4 timestamps to zero without re-encoding");
-                normalizeMp4(original,output);
+                try{
+                    if(FragmentedMp4.rebase(original,output)){
+                        log.accept("Online artwork: fragment timestamps rebased in Java; video data unchanged");
+                    }else{
+                        normalizeMp4(original,output);
+                        verifyTimeline(original,output);
+                    }
+                }catch(IOException incompatibleRemux){
+                    log.accept("Online artwork: remux could not preserve timing; keeping original MP4 for playback timestamp rebasing: "+incompatibleRemux.getMessage());
+                    Files.copy(original,output,StandardCopyOption.REPLACE_EXISTING);
+                }
             }finally{Files.deleteIfExists(original);}
         }else{
             log.accept("Online artwork: FFmpeg HLS download");
@@ -230,17 +240,64 @@ public final class OnlineArtwork implements AutoCloseable {
         // Use rawvideo explicitly: stripped Linux builds may lack null's default encoder.
         log.accept("Online artwork: validating complete video");
         run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror",
-            "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-c:v","rawvideo","-threads","1","-f","null","-"),90);
+            "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-vf","setpts=PTS-STARTPTS,fps=30","-c:v","rawvideo","-threads","1","-f","null","-"),90);
     }
     // Stream-copying with FFmpeg's default timestamp rebasing also rewrites the duration.
     // Apple fMP4s can contain a 10-second clip with timestamps running from 10 to 20.
+    // Do not use -xerror while correcting those timestamps: older FFmpeg may abort
+    // on recoverable demux warnings. The full decoded output is still validated strictly.
     private void normalizeMp4(Path original,Path output)throws Exception{
         run(normalizeCommand(ffmpeg,original,output),90);
     }
     static List<String> normalizeCommand(Path ffmpeg,Path original,Path output){
-        return List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
-            "-i",original.toString(),"-map","0:v:0","-an","-sn","-dn",
+        return List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","warning","-y",
+            "-copyts","-start_at_zero","-copytb","1","-i",original.toString(),
+            "-map","0:v:0","-an","-sn","-dn",
             "-c:v","copy","-movflags","+faststart",output.toString());
+    }
+    static List<String> timelineCommand(Path ffmpeg,Path video,Path report){
+        return List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-y",
+            "-copyts","-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
+            "-c:v","copy","-f","framecrc",report.toString());
+    }
+    private void verifyTimeline(Path original,Path output)throws Exception{
+        Path before=Files.createTempFile(cache,"timeline-before-",".txt"),after=null;
+        try{
+            after=Files.createTempFile(cache,"timeline-after-",".txt");
+            run(timelineCommand(ffmpeg,original,before),30);
+            run(timelineCommand(ffmpeg,output,after),30);
+            if(Files.size(before)>4194304||Files.size(after)>4194304)throw new IOException("Artwork timing report too large");
+            if(!sameTimeline(Files.readString(before),Files.readString(after)))throw new IOException("Remux changed packet timing or contents");
+        }finally{Files.deleteIfExists(before);if(after!=null)Files.deleteIfExists(after);}
+    }
+    private record Packet(double dts,double pts,double duration,String size,String checksum){}
+    private static List<Packet> packets(String report){
+        double unit=Double.NaN;List<Packet> result=new ArrayList<>();
+        for(String line:report.split("\\R")){
+            if(line.startsWith("#tb 0:")){
+                String[] ratio=line.substring(6).trim().split("/");unit=Double.parseDouble(ratio[0])/Double.parseDouble(ratio[1]);
+            }else if(!line.isBlank()&&!line.startsWith("#")){
+                String[] fields=line.split(",");if(fields.length<6||!fields[0].trim().equals("0"))throw new IllegalArgumentException("Invalid packet report");
+                result.add(new Packet(Long.parseLong(fields[1].trim())*unit,Long.parseLong(fields[2].trim())*unit,
+                    Long.parseLong(fields[3].trim())*unit,fields[4].trim(),fields[5].trim()));
+            }
+        }
+        if(!Double.isFinite(unit)||unit<=0||result.isEmpty())throw new IllegalArgumentException("Empty timing report");
+        return result;
+    }
+    static boolean sameTimeline(String before,String after){
+        try{
+            var a=packets(before);var b=packets(after);if(a.size()!=b.size())return false;
+            double shift=b.getFirst().dts()-a.getFirst().dts();
+            for(int i=0;i<a.size();i++){
+                Packet x=a.get(i),y=b.get(i);
+                if(!x.size().equals(y.size())||!x.checksum().equals(y.checksum())
+                    ||Math.abs(y.dts()-x.dts()-shift)>0.0001
+                    ||Math.abs(y.pts()-x.pts()-shift)>0.0001
+                    ||Math.abs(y.duration()-x.duration())>0.0001)return false;
+            }
+            return true;
+        }catch(RuntimeException malformed){return false;}
     }
     private void downloadMp4(String url,Path output)throws Exception{
         if(!appleVideoUrl(url))throw new IOException("Unrecognized video host");

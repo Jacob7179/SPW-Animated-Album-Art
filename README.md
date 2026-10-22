@@ -20,8 +20,10 @@ Bundled FFmpeg licensing is in licenses/. Build with build.ps1 and JDK 25; requi
 - Added a persistent user log alongside the existing plugin-directory log.
 - Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and correct the reported duration.
 - Held the opening video frame until it is drawn by the native cover, preventing playback from advancing unseen.
-- New cache filenames use the `normalized-` prefix so older files with offset timestamps are downloaded again.
+- New cache filenames use the `timing-v3-` prefix so older files with offset timestamps are downloaded again.
 - Fixed Linux startup when the host class loader does not provide `CodeSource.location`; host discovery now falls back to class resources and the JVM classpath.
+- Allowed recoverable timestamp warnings during MP4 remuxing on older Linux FFmpeg builds; full-video validation remains strict.
+- Verified remuxed packet timing and retained the original MP4 if FFmpeg changes it; playback rebases the original timeline before frame-rate conversion.
 
 ## Third-party attribution and licensing
 
@@ -57,4 +59,8 @@ The plugin also attempts to write `animated-cover.log` in its installation direc
 Linux playback still needs verification on the target system; build and live download tests were performed on Windows.
 
 
-Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and rewrite the duration. For example, a 10-second source clip with timestamps 10–20 seconds becomes a normal 0–10 second MP4. New cache files use a `normalized-` prefix, so older files with offset timestamps are downloaded again. This does not add footage absent from the source.
+Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and rewrite the duration. For example, a 10-second source clip with timestamps 10–20 seconds becomes a normal 0–10 second MP4. New cache files use a `timing-v3-` prefix, so older files with damaged or offset timestamps are downloaded again. This does not add footage absent from the source.
+
+Linux timestamp handling preserves packet timestamps during remuxing and checks packet contents, PTS, DTS, durations and timebase conversion against the original download. If the local FFmpeg changes timing or cannot remux the video, the original MP4 is retained instead and timestamps are rebased in the playback filter before frame-rate conversion. Full decoding validation still runs before caching. Thus source footage is preserved even on older Linux FFmpeg builds; a cache file retained through this fallback may still show the source timestamp offset in an external player.
+
+For supported single-video Apple fragmented MP4 files, timestamp rebasing now happens directly in Java by subtracting the initial decode-time offset from each fragment. Encoded samples, sample durations, composition offsets and box positions are unchanged; this avoids platform-specific remuxer behavior. The remaining one-frame composition delay is handled by the playback `setpts` filter. Files with edit lists, multiple tracks, external fragment indexes or explicit nonzero header durations use the verified FFmpeg path instead. New `timing-v3-` cache filenames force older offset caches to be fetched again.

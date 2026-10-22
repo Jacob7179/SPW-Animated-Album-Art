@@ -69,7 +69,7 @@ public final class NativeVideo implements AutoCloseable {
             while(running){
                 decoder=new ProcessBuilder(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error",
                     "-i",video.toString(),"-map","0:v:0","-an","-sn","-dn",
-                    "-vf","fps="+FPS+",scale="+SIZE+":"+SIZE+":force_original_aspect_ratio=increase:flags=lanczos,crop="+SIZE+":"+SIZE,
+                    "-vf","setpts=PTS-STARTPTS,fps="+FPS+",scale="+SIZE+":"+SIZE+":force_original_aspect_ratio=increase:flags=lanczos,crop="+SIZE+":"+SIZE,
                     "-threads","1","-pix_fmt","bgra","-f","rawvideo","pipe:1")
                     .redirectError(ProcessBuilder.Redirect.DISCARD).start();
                 process=decoder;
