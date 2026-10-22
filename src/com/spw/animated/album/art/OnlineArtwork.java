@@ -64,7 +64,7 @@ public final class OnlineArtwork implements AutoCloseable {
         }
         metadataWarning="";
         Album request=new Album(artist.trim(),album.trim());String key=request.key();
-        Path file=cache.resolve("timing-v3-"+hash(key)+".mp4");
+        Path file=cache.resolve("seek-v1-"+hash(key)+".mp4");
         try{
             if(Files.isRegularFile(file)&&Files.size(file)>32)return file;
             if(Files.isRegularFile(file))Files.delete(file);
@@ -214,22 +214,24 @@ public final class OnlineArtwork implements AutoCloseable {
         url=downloadSource(url);
         if(URI.create(url).getPath().toLowerCase(Locale.ROOT).endsWith(".mp4")){
             log.accept("Online artwork: Java HTTPS MP4 download (no FFmpeg TLS dependency)");
-            Path original=Files.createTempFile(cache,"original-",".mp4");
+            Path original=Files.createTempFile(cache,"original-",".mp4"),rebased=null;
             try{
                 downloadMp4(url,original);
-                log.accept("Online artwork: normalizing MP4 timestamps to zero without re-encoding");
-                try{
-                    if(FragmentedMp4.rebase(original,output)){
-                        log.accept("Online artwork: fragment timestamps rebased in Java; video data unchanged");
-                    }else{
-                        normalizeMp4(original,output);
-                        verifyTimeline(original,output);
-                    }
-                }catch(IOException incompatibleRemux){
-                    log.accept("Online artwork: remux could not preserve timing; keeping original MP4 for playback timestamp rebasing: "+incompatibleRemux.getMessage());
-                    Files.copy(original,output,StandardCopyOption.REPLACE_EXISTING);
+                Path remuxSource=original;
+                rebased=Files.createTempFile(cache,"rebased-",".mp4");
+                if(FragmentedMp4.rebase(original,rebased)){
+                    remuxSource=rebased;
+                    log.accept("Online artwork: fragment timestamps rebased in Java; rebuilding seekable MP4 index");
                 }
-            }finally{Files.deleteIfExists(original);}
+                try{
+                    normalizeMp4(remuxSource,output);
+                    verifyTimeline(remuxSource,output);
+                    log.accept("Online artwork: seekable MP4 index rebuilt; packet timing preserved");
+                }catch(IOException incompatibleRemux){
+                    log.accept("Online artwork: keeping source for playback timestamp rebasing; external seeking may be limited: "+incompatibleRemux.getMessage());
+                    Files.copy(remuxSource,output,StandardCopyOption.REPLACE_EXISTING);
+                }
+            }finally{Files.deleteIfExists(original);if(rebased!=null)Files.deleteIfExists(rebased);}
         }else{
             log.accept("Online artwork: FFmpeg HLS download");
             run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
