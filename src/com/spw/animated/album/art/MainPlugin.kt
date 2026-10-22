@@ -68,7 +68,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         val state=mutableStateOf<NativeVideo.Frame?>(null)
         val decoder=NativeVideo(ffmpeg,path,{state.value=it},::diagnostic)
         decoder.setLoopPause(pauseLoops)
-        val stream=Stream(decoder,state,1);streams[path]=stream;decoder.start();return stream
+        val stream=Stream(decoder,state,1);streams[path]=stream;decoder.prepare();return stream
     }
     @Synchronized private fun release(path:Path,stream:Stream){
         if(streams[path]!==stream)return
@@ -146,6 +146,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                         if(frame!=null){
                             if(!slot.videoDrawn){slot.videoDrawn=true;diagnostic("Video frame drawn inside native painter: ${slot.song}")}
                             (call.args[0] as DrawScope).drawNativeVideoFrame(frame.bitmap,call.args[2] as Float,call.args[3] as ColorFilter?)
+                            slot.stream?.decoder?.presented()
                             call.setResult(null)
                         }
                     }

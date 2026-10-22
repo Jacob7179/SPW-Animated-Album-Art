@@ -18,6 +18,7 @@ Bundled FFmpeg licensing is in licenses/. Build with build.ps1 and JDK 25; requi
 - Direct MP4 downloads now use Java HTTPS, avoiding differences in bundled FFmpeg TLS support.
 - Full-video validation explicitly uses rawvideo; libx264 is not required for online downloads.
 - Added a persistent user log alongside the existing plugin-directory log.
+- Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and rewrite the duration
 
 ## Third-party attribution and licensing
 
@@ -52,3 +53,5 @@ The plugin also attempts to write `animated-cover.log` in its installation direc
 
 Linux playback still needs verification on the target system; build and live download tests were performed on Windows.
 
+
+Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and rewrite the duration. For example, a 10-second source clip with timestamps 10–20 seconds becomes a normal 0–10 second MP4. New cache files use a `normalized-` prefix, so older files with offset timestamps are downloaded again. This does not add footage absent from the source.

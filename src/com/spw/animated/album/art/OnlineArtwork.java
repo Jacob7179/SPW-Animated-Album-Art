@@ -64,7 +64,7 @@ public final class OnlineArtwork implements AutoCloseable {
         }
         metadataWarning="";
         Album request=new Album(artist.trim(),album.trim());String key=request.key();
-        Path file=cache.resolve("complete-"+hash(key)+".mp4");
+        Path file=cache.resolve("normalized-"+hash(key)+".mp4");
         try{
             if(Files.isRegularFile(file)&&Files.size(file)>32)return file;
             if(Files.isRegularFile(file))Files.delete(file);
@@ -214,7 +214,12 @@ public final class OnlineArtwork implements AutoCloseable {
         url=downloadSource(url);
         if(URI.create(url).getPath().toLowerCase(Locale.ROOT).endsWith(".mp4")){
             log.accept("Online artwork: Java HTTPS MP4 download (no FFmpeg TLS dependency)");
-            downloadMp4(url,output);
+            Path original=Files.createTempFile(cache,"original-",".mp4");
+            try{
+                downloadMp4(url,original);
+                log.accept("Online artwork: normalizing MP4 timestamps to zero without re-encoding");
+                normalizeMp4(original,output);
+            }finally{Files.deleteIfExists(original);}
         }else{
             log.accept("Online artwork: FFmpeg HLS download");
             run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
@@ -226,6 +231,16 @@ public final class OnlineArtwork implements AutoCloseable {
         log.accept("Online artwork: validating complete video");
         run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror",
             "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-c:v","rawvideo","-threads","1","-f","null","-"),90);
+    }
+    // Stream-copying with FFmpeg's default timestamp rebasing also rewrites the duration.
+    // Apple fMP4s can contain a 10-second clip with timestamps running from 10 to 20.
+    private void normalizeMp4(Path original,Path output)throws Exception{
+        run(normalizeCommand(ffmpeg,original,output),90);
+    }
+    static List<String> normalizeCommand(Path ffmpeg,Path original,Path output){
+        return List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
+            "-i",original.toString(),"-map","0:v:0","-an","-sn","-dn",
+            "-c:v","copy","-movflags","+faststart",output.toString());
     }
     private void downloadMp4(String url,Path output)throws Exception{
         if(!appleVideoUrl(url))throw new IOException("Unrecognized video host");

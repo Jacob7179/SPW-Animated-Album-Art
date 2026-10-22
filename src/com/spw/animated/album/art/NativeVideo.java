@@ -40,14 +40,22 @@ public final class NativeVideo implements AutoCloseable {
     private final Consumer<String> log;
     private final Deque<Frame> retired=new ArrayDeque<>();
     private volatile boolean running;
+    private boolean awaitingPresentation;
     private volatile boolean loopPause=true;
     public void setLoopPause(boolean enabled){loopPause=enabled;}
     private volatile Process process;
     public NativeVideo(Path ffmpeg,Path video,Consumer<Frame> output,Consumer<String> log){
         this.ffmpeg=ffmpeg;this.video=video;this.output=output;this.log=log;
     }
-    public synchronized void start(){
+    public synchronized void start(){start(false);}
+    /** Publish the opening frame, but do not advance until a native painter draws it. */
+    public synchronized void prepare(){start(true);}
+    public synchronized void presented(){
+        if(awaitingPresentation){awaitingPresentation=false;notifyAll();}
+    }
+    private synchronized void start(boolean waitForPresentation){
         if(running)return;
+        awaitingPresentation=waitForPresentation;
         running=true;
         Thread thread=new Thread(this::decode,"AnimatedCover-native-video");thread.setDaemon(true);thread.start();
     }
@@ -89,7 +97,13 @@ public final class NativeVideo implements AutoCloseable {
                             firstInLoop=false;
                             while(retired.size()>FPS*2)retired.removeFirst().close();
                         }
-                        if(first){first=false;log.accept("First native video frame ready: "+video);}
+                        if(first){
+                            first=false;log.accept("First native video frame ready: "+video);
+                            synchronized(this){
+                                while(running&&awaitingPresentation)wait();
+                                nextFrame=System.nanoTime()+interval;
+                            }
+                        }
                     }
                 }
                 decoder.waitFor();
@@ -106,7 +120,7 @@ public final class NativeVideo implements AutoCloseable {
         }
     }
     public synchronized void close(){
-        running=false;
+        running=false;notifyAll();
         Process p=process;if(p!=null)p.destroyForcibly();
         output.accept(null);
         var old=new ArrayList<>(retired);retired.clear();
