@@ -87,7 +87,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         }
     }
     override fun start(){
-        check(pluginContext.spwVersion=="1.19.0"){"Requires Salt Player 1.19.0"}
+        diagnostic("Starting plugin on Salt Player ${pluginContext.spwVersion}; compatibility determined by native API features")
         check(WorkshopApi.manager.isPermissionGranted(PluginPermission.CLASS_TRANSFORM)&&WorkshopApi.manager.isPermissionGranted(PluginPermission.LIBRARY_READ)){"Grant Class transform and Library read"}
         var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
         ffmpeg=DecoderExecutable.resolve(root)

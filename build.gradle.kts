@@ -15,7 +15,7 @@ plugins {
 }
 
 group = "com.spw.animated.album.art"
-version = "0.4.4"
+version = "0.4.5"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -49,6 +49,9 @@ val prepareHostBytecode = tasks.register<Copy>("prepareHostBytecode") {
 }
 dependencies {
     compileOnly(kotlin("stdlib"))
+    // Use official Kotlin package metadata; the merged host archive may omit declarations.
+    // Keep this before hostBytecode. Runtime is supplied by Salt Player, never packaged.
+    compileOnly("androidx.compose.runtime:runtime-desktop:1.12.0") { isTransitive = false }
     compileOnly(files(hostBytecode).builtBy(prepareHostBytecode))
 }
 sourceSets.named("main") {
@@ -64,7 +67,7 @@ spmod {
     PluginId = "com.spw.animated.album.art"
     PluginName = "SPW Animated Album Art"
     PluginDescription = "Native cover-canvas MP4 replacement"
-    PluginVersion = "0.4.4"
+    PluginVersion = "0.4.5"
     PluginProvider = "Jacob7179"
     PluginHasConfig = true
     PluginPermissions = listOf(PluginPermission.CLASS_TRANSFORM, PluginPermission.LIBRARY_READ)
