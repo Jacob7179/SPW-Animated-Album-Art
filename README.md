@@ -12,13 +12,15 @@ Includes live cover-coordinate resolution for cover/lyrics switches. Video loops
 
 Bundled FFmpeg licensing is in licenses/. Build with build.ps1 and JDK 25; requires the host archive and cached Kotlin 2.4.20 compiler.
 
-## Version 0.4.5.1: Build Improvements and Version Compatibility
+## Version 0.4.5.1: Build, Download, and Playback Fixes
 
 - Fixed Compose API build errors by adding the official Compose Runtime as a compile-only dependency.
 - Direct MP4 downloads now use Java HTTPS, avoiding differences in bundled FFmpeg TLS support.
 - Full-video validation explicitly uses rawvideo; libx264 is not required for online downloads.
 - Added a persistent user log alongside the existing plugin-directory log.
-- Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and rewrite the duration
+- Downloaded Apple MP4s are remuxed without re-encoding to normalize their start timestamp to zero and correct the reported duration.
+- Held the opening video frame until it is drawn by the native cover, preventing playback from advancing unseen.
+- New cache filenames use the `normalized-` prefix so older files with offset timestamps are downloaded again.
 
 ## Third-party attribution and licensing
 
