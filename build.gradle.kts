@@ -76,6 +76,7 @@ spmod {
 tasks.named("plugin") {
     inputs.dir("bin")
     inputs.dir("licenses")
+    inputs.file("LICENSE")
     doFirst {
         listOf("bin/ffmpeg.exe", "bin/ffmpeg").forEach { require(file(it).isFile) { "Missing $it" } }
     }
@@ -83,7 +84,7 @@ tasks.named("plugin") {
         val packages = fileTree(layout.buildDirectory.dir("libs")) { include("*.spmod") }
         require(!packages.isEmpty) { "Workshop did not produce a .spmod" }
         packages.forEach { archive ->
-            val assets = (listOf(file("bin/ffmpeg.exe"), file("bin/ffmpeg")) +
+            val assets = (listOf(file("bin/ffmpeg.exe"), file("bin/ffmpeg"), file("LICENSE")) +
                 file("licenses").walkTopDown().filter { it.isFile }.toList()
             ).associateBy { it.relativeTo(projectDir).invariantSeparatorsPath }
             val temporary = archive.resolveSibling(archive.name + ".tmp")

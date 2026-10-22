@@ -26,6 +26,9 @@ For Apple single-file byte-range HLS, the downloader selects a moderate SDR H.26
 
 The online artwork feature uses the public API of [Apple Music Animated Artworks by m8tec](https://github.com/m8tec/apple-music-animated-artworks), hosted at [artwork.m8tec.top](https://artwork.m8tec.top/). Its server source code is not bundled with this plugin.
 
-SPW Animated Album Art and its independently written API client remain licensed under the [MIT License](LICENSE). No upstream software license was identified for the external project during review; this attribution does not grant permission or claim that the service is MIT-licensed. The project's MIT License does not cover the external service, downloaded Apple Music artwork, or third-party trademarks. Service use and artwork rights remain subject to the applicable terms and rights holders.
+SPW Animated Album Art and its independently written API client are licensed under the [GNU AGPL v3.0](LICENSE) (`AGPL-3.0-only`). No upstream software license was identified for the external project during review; this attribution does not grant permission or claim that the service is MIT-licensed. The project's AGPL-3.0-only license does not cover the external service, downloaded Apple Music artwork, or third-party trademarks. Service use and artwork rights remain subject to the applicable terms and rights holders.
 
 For details, please refer to the [Third-party notices](licenses/THIRD_PARTY_NOTICES.md) and [FFmpeg](licenses/FFmpeg-THIRD-PARTY.md) license statement.
+## Project license
+
+Copyright (c) 2026 Jacob. SPW Animated Album Art is licensed under the GNU Affero General Public License, version 3 only (`AGPL-3.0-only`). See [LICENSE](LICENSE) for the complete terms. Third-party components and artwork retain their own licenses and rights as described in [third-party notices](licenses/THIRD_PARTY_NOTICES.md).

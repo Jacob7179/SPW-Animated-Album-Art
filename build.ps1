@@ -30,7 +30,8 @@ foreach($binary in @('ffmpeg.exe','ffmpeg')) {
  if(!(Test-Path -LiteralPath "$PSScriptRoot/bin/$binary" -PathType Leaf)){throw "Missing bin/$binary"}
  Copy-Item "$PSScriptRoot/bin/$binary" "$stage/bin/$binary"
 }
-Copy-Item "$PSScriptRoot/licenses/FFmpeg-*" "$stage/licenses/"
+Copy-Item "$PSScriptRoot/licenses/*" "$stage/licenses/"
+Copy-Item "$PSScriptRoot/LICENSE" "$stage/LICENSE"
 Copy-Item "$PSScriptRoot/README.md" "$stage/README.md"
 Copy-Item "$PSScriptRoot/src/main/resources/*" $classes
 Add-Type -AssemblyName System.IO.Compression.FileSystem
