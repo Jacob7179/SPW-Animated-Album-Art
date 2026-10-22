@@ -212,13 +212,45 @@ public final class OnlineArtwork implements AutoCloseable {
     }
     private void download(String url,Path output) throws Exception {
         url=downloadSource(url);
-        run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
-            "-protocol_whitelist","https,tls,tcp,crypto","-rw_timeout","15000000","-i",url,
-            "-map","0:v:0","-an","-sn","-dn","-t","120","-fs","104857600",
-            "-c:v","copy","-movflags","+faststart",output.toString()),90);
-        // Decode the entire cached clip before publishing it, rather than validating only its first frame.
+        if(URI.create(url).getPath().toLowerCase(Locale.ROOT).endsWith(".mp4")){
+            log.accept("Online artwork: Java HTTPS MP4 download (no FFmpeg TLS dependency)");
+            downloadMp4(url,output);
+        }else{
+            log.accept("Online artwork: FFmpeg HLS download");
+            run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror","-y",
+                "-protocol_whitelist","https,tls,tcp,crypto","-rw_timeout","15000000","-i",url,
+                "-map","0:v:0","-an","-sn","-dn","-t","120","-fs","104857600",
+                "-c:v","copy","-movflags","+faststart",output.toString()),90);
+        }
+        // Use rawvideo explicitly: stripped Linux builds may lack null's default encoder.
+        log.accept("Online artwork: validating complete video");
         run(List.of(ffmpeg.toString(),"-nostdin","-hide_banner","-loglevel","error","-xerror",
-            "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-f","null","-"),90);
+            "-i",output.toString(),"-map","0:v:0","-an","-sn","-dn","-c:v","rawvideo","-threads","1","-f","null","-"),90);
+    }
+    private void downloadMp4(String url,Path output)throws Exception{
+        if(!appleVideoUrl(url))throw new IOException("Unrecognized video host");
+        HttpURLConnection connection=(HttpURLConnection)URI.create(url).toURL().openConnection();
+        connection.setConnectTimeout(10000);connection.setReadTimeout(15000);connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("Accept","video/mp4");connection.setRequestProperty("User-Agent","SPW-Animated-Album-Art");
+        try{
+            int status=connection.getResponseCode();if(status!=200)throw new IOException("Artwork MP4 HTTP "+status);
+            long expected=connection.getContentLengthLong();if(expected>104857600)throw new IOException("Artwork exceeds 100 MiB");
+            try(InputStream input=connection.getInputStream();OutputStream sink=Files.newOutputStream(output)){
+                copyMp4(input,sink,expected,()->!enabled||closed||Thread.currentThread().isInterrupted());
+            }
+        }finally{connection.disconnect();}
+    }
+    static long copyMp4(InputStream input,OutputStream output,long expected,java.util.function.BooleanSupplier cancelled)throws Exception{
+        byte[] buffer=new byte[65536];long total=0,deadline=System.nanoTime()+90_000_000_000L;
+        while(true){
+            if(cancelled.getAsBoolean())throw new InterruptedException();
+            if(System.nanoTime()>deadline)throw new IOException("Artwork MP4 download timed out");
+            int count=input.read(buffer);if(count<0)break;
+            total+=count;if(total>104857600)throw new IOException("Artwork exceeds 100 MiB");
+            output.write(buffer,0,count);
+        }
+        if(total<=32||(expected>=0&&total!=expected))throw new IOException("Incomplete artwork MP4: received "+total+", expected "+expected);
+        return total;
     }
     private void run(List<String> command,int seconds)throws Exception{
         if(!enabled||closed||Thread.currentThread().isInterrupted())throw new InterruptedException();

@@ -80,19 +80,16 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
         streams.values.forEach{it.decoder.setLoopPause(value)}
     }
     private fun diagnostic(message:String){
-        System.err.println("Animated Cover: $message")
-        runCatching{
-            var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
-            Files.writeString(root.resolve("animated-cover.log"),"${java.time.Instant.now()} $message\n",StandardOpenOption.CREATE,StandardOpenOption.APPEND)
-        }
+        PluginLog.write(pluginContext.pluginPath,message)
     }
     override fun start(){
+        diagnostic("Persistent user log: ${PluginLog.userPath()}")
         diagnostic("Starting plugin on Salt Player ${pluginContext.spwVersion}; compatibility determined by native API features")
         check(WorkshopApi.manager.isPermissionGranted(PluginPermission.CLASS_TRANSFORM)&&WorkshopApi.manager.isPermissionGranted(PluginPermission.LIBRARY_READ)){"Grant Class transform and Library read"}
         var root=Paths.get(pluginContext.pluginPath);if(!Files.isDirectory(root))root=root.parent
-        ffmpeg=DecoderExecutable.resolve(root)
-        val coverTarget=HostCoverTarget.resolve(javaClass.classLoader)
-        val nativeMethods=HostMethods.resolve()
+        ffmpeg=runCatching{DecoderExecutable.resolve(root)}.onFailure{diagnostic("FFmpeg discovery failed: ${it.stackTraceToString()}")}.getOrThrow()
+        val coverTarget=runCatching{HostCoverTarget.resolve(javaClass.classLoader)}.onFailure{diagnostic("Cover target discovery failed: ${it.stackTraceToString()}")}.getOrThrow()
+        val nativeMethods=runCatching{HostMethods.resolve()}.onFailure{diagnostic("Native API discovery failed: ${it.stackTraceToString()}")}.getOrThrow()
         diagnostic("Resolved native methods: $nativeMethods")
         diagnostic("Native cover target: ${coverTarget.owner()}.${coverTarget.method()} in ${coverTarget.caller()}; decoder=$ffmpeg")
         settings=WorkshopApi.manager.createConfigManager().getConfig()
@@ -174,7 +171,7 @@ class MainPlugin(context:PluginContext):SpwPlugin(context){
                     delay(1000)
                 }
             }}
-        }catch(error:Throwable){enabled=false;onlineMonitor?.cancel();onlineMonitor=null;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
+        }catch(error:Throwable){diagnostic("Plugin startup/hooks failed: ${error.stackTraceToString()}");enabled=false;onlineMonitor?.cancel();onlineMonitor=null;bootstrap?.close();bootstrap=null;online?.close();online=null;handles.forEach{it.unhook()};handles.clear();throw error}
     }
     @Composable private fun CoverScope(call:UiHookCall){
         val source by produceState(Source()){

@@ -12,7 +12,7 @@ if (!$compiler -or !$compose -or !$annotations) { throw 'Kotlin 2.4.20 compiler,
 $stage=Join-Path $PSScriptRoot ('build/stage-'+[guid]::NewGuid().ToString('N'))
 $classes=Join-Path $stage 'classes'
 New-Item -ItemType Directory -Force "$classes/META-INF","$stage/bin","$stage/licenses" | Out-Null
-& "$JdkHome/bin/javac.exe" -proc:none --release 25 -encoding UTF-8 -classpath $hostArchive -d $classes "$PSScriptRoot/src/com/spw/animated/album/art/NativeVideo.java" "$PSScriptRoot/src/com/spw/animated/album/art/SongVideoPath.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostCoverBridge.java" "$PSScriptRoot/src/com/spw/animated/album/art/OnlineArtwork.java" "$PSScriptRoot/src/com/spw/animated/album/art/CoverOrigins.java" "$PSScriptRoot/src/com/spw/animated/album/art/NativeCoverBootstrap.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostCoverTarget.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostMethods.java" "$PSScriptRoot/src/com/spw/animated/album/art/DecoderExecutable.java"
+& "$JdkHome/bin/javac.exe" -proc:none --release 25 -encoding UTF-8 -classpath $hostArchive -d $classes "$PSScriptRoot/src/com/spw/animated/album/art/NativeVideo.java" "$PSScriptRoot/src/com/spw/animated/album/art/SongVideoPath.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostCoverBridge.java" "$PSScriptRoot/src/com/spw/animated/album/art/OnlineArtwork.java" "$PSScriptRoot/src/com/spw/animated/album/art/CoverOrigins.java" "$PSScriptRoot/src/com/spw/animated/album/art/NativeCoverBootstrap.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostCoverTarget.java" "$PSScriptRoot/src/com/spw/animated/album/art/HostMethods.java" "$PSScriptRoot/src/com/spw/animated/album/art/DecoderExecutable.java" "$PSScriptRoot/src/com/spw/animated/album/art/PluginLog.java"
 if($LASTEXITCODE -ne 0){throw 'Java compilation failed'}
 & "$JdkHome/bin/java.exe" -cp "$compiler;$hostArchive;$annotations" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -jvm-target 25 "-Xplugin=$compose" -classpath "$runtime;$hostArchive;$classes" -d $classes "$PSScriptRoot/src/com/spw/animated/album/art/MainPlugin.kt"
 if($LASTEXITCODE -ne 0){throw 'Kotlin compilation failed'}
@@ -20,7 +20,7 @@ $manifest=@'
 Manifest-Version: 1.0
 Plugin-Class: com.spw.animated.album.art.MainPlugin
 Plugin-Id: com.spw.animated.album.art
-Plugin-Version: 0.4.5
+Plugin-Version: 0.4.5.1
 Plugin-Provider: Jacob
 Plugin-Name: Animated Cover Video
 Plugin-Description: Native cover-canvas MP4 replacement
@@ -37,7 +37,7 @@ Copy-Item "$PSScriptRoot/LICENSE" "$stage/LICENSE"
 Copy-Item "$PSScriptRoot/README.md" "$stage/README.md"
 Copy-Item "$PSScriptRoot/src/main/resources/*" $classes
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$package=Join-Path $PSScriptRoot 'AnimatedCover-0.4.5.spmod'
+$package=Join-Path $PSScriptRoot 'AnimatedCover-0.4.5.1.spmod'
 if(Test-Path -LiteralPath $package){Remove-Item -LiteralPath $package}
 [IO.Compression.ZipFile]::CreateFromDirectory($stage,$package,[IO.Compression.CompressionLevel]::Optimal,$false)
 Write-Host "Built: $package"
