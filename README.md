@@ -4,6 +4,8 @@
 
 <h1 align="center">SPW Animated Album Art</h1>
 
+<p align="center">English | <a href="README.zh-CN.md">简体中文</a></p>
+
 Salt Player Windows/Linux mod. Put square_animated_artwork.mp4 beside the song and import plugin-com.spw.animated.album.art-0.4.5.1.spmod.
 
 Video replaces the cover pixels in the native cover canvas. The brightness filter and its preference have been removed; decoded source colors are rendered directly. Existing dim_video settings are ignored.
